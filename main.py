@@ -14,7 +14,7 @@ def compilador(string):
     # caso válida, executar operação
 
     else:
-        print("Operação válida.")
+    
         lista_numeros = []
         lista_operadores = []
         numero_atual = ''
@@ -39,8 +39,6 @@ def compilador(string):
             lista_numeros.append(int(numero_atual))
              
 
-    print(lista_numeros)
-    print(lista_operadores)
 
     resultado = executa_operacao(lista_numeros, lista_operadores)
     print(resultado)
@@ -106,18 +104,6 @@ def limpa_string(string):
 
 
         
-
-string1 = '1+2'
-string2 = '3-2'
-string3 = '11+22-33'
-string4 = '789   +345  -    123'
-
-string5 = '1 1'
-string6 = '+1'
-string7 = '1+'
-
-compilador(string7)
-# limpa_string(string4)
 
 
 
