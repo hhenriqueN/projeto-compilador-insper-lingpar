@@ -42,8 +42,6 @@ def compilador(string):
 
     resultado = executa_operacao(lista_numeros, lista_operadores)
     print(resultado)
-
-    return resultado
                 
                  
 def valida_operacao(string):
@@ -104,6 +102,19 @@ def limpa_string(string):
 
 
         
+
+# string1 = '1+2'
+# string2 = '3-2'
+# string3 = '11+22-33'
+# string4 = '789   +345  -    123'
+
+# string5 = '1 1'
+# string6 = '+1'
+# string7 = '1+'
+string_fail = '  1   -   22+333   +4  '
+
+compilador(string_fail)
+# limpa_string(string4)
 
 
 
