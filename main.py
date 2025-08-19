@@ -62,7 +62,7 @@ def valida_operacao(string):
         if caractere in operadores:
             contador_operadores += 1
 
-    if contador_numeros < 2 or contador_operadores == 0:
+    if contador_numeros < 2 or contador_operadores == 0 or contador_numeros == contador_operadores:
 
         return False
     
@@ -111,7 +111,7 @@ def limpa_string(string):
 # string5 = '1 1'
 # string6 = '+1'
 # string7 = '1+'
-string_fail = '  1   -   22+333   +4  '
+string_fail = '7-'
 
 compilador(string_fail)
 # limpa_string(string4)
