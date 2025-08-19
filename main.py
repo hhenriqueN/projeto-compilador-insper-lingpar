@@ -1,3 +1,5 @@
+import sys
+
 def compilador(string):
 
     # chamando função para ignorar espaços
@@ -97,24 +99,15 @@ def limpa_string(string):
 
             string_limpa += string[i]
             
-    #print(string_limpa)
     return string_limpa
 
 
-        
+if __name__ == "__main__":
+    
+    entrada = sys.argv[1]
+    compilador(entrada)
 
-# string1 = '1+2'
-# string2 = '3-2'
-# string3 = '11+22-33'
-# string4 = '789   +345  -    123'
+    
 
-# string5 = '1 1'
-# string6 = '+1'
-# string7 = '1+'
-string_fail = '7-'
-
-compilador(string_fail)
-# limpa_string(string4)
-
-
-
+# string_git_fail = '  1   -   22+333   +4  '
+# compilador(string_git_fail)
