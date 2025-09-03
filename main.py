@@ -69,7 +69,7 @@ class Parser():
 
         if lex.next.kind != 'INT':
 
-            raise Exception(f"A operação não começa com um número. Primeiro caractere: {lex.next}")
+            raise Exception(f"A operação não começa com um número. Primeiro caractere: {lex.next.value}")
         
         else:
             resultado += lex.next.value
