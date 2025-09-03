@@ -117,8 +117,8 @@ class Parser():
 
 
 
-def main():
-    source_code = "10 - 3 + 2"
+def main(source_code):
+    
     resultado = Parser.run(source_code)
     print(resultado)
 
