@@ -1,113 +1,131 @@
-import sys
+class Token():
 
-def compilador(string):
+    def __init__(self, kind, value):
 
-    # chamando função para ignorar espaços
-    string = limpa_string(string)
-
-    operadores = ['+', '-']
-
-    string_validada = valida_operacao(string)
+        self.kind = kind
+        self.value = value
 
 
-    if not string_validada:
-        raise Exception("A string não possui uma operação válida.")
+class Lexer():
+
+    def __init__(self, source):
+
+        self.source = source
+        self.position = 0
+        self.next = None
+
+    def select_next(self):
+
     
-    # caso válida, executar operação
+        while self.position < len(self.source) and self.source[self.position] == " ":
 
-    else:
-    
-        lista_numeros = []
-        lista_operadores = []
-        numero_atual = ''
+            self.position += 1
 
-        for caractere in string:
-             
-            
-            if caractere not in operadores:
-                 
-                 # se entrou aqui é um número
-                 numero_atual += caractere
+        if self.position == len(self.source):
 
-            else:
-                # se entrou aqui, é um operador
-                lista_numeros.append(int(numero_atual))
-                lista_operadores.append(caractere)
+            self.next = Token('EOF', '')
+            return self.next
 
-                numero_atual = ''
+        elif self.source[self.position] == "+":
 
-        # colocando o numero que sobrou da iteração
-        if numero_atual:
-            lista_numeros.append(int(numero_atual))
-             
+            self.next = Token('PLUS', self.source[self.position])
+            self.position += 1
+            return self.next
 
+        elif self.source[self.position] == "-":
 
-    resultado = executa_operacao(lista_numeros, lista_operadores)
-    print(resultado)
+            self.next = Token('MINUS', self.source[self.position])
+            self.position += 1
+            return self.next
+
+        elif self.source[self.position].isdigit():
+
+            numero = ''
+
+            while self.position < len(self.source) and self.source[self.position].isdigit():
+
+                numero += self.source[self.position]
+                self.position += 1
                 
-                 
-def valida_operacao(string):
+            numero = int(numero)
+            self.next = Token('INT', numero)
+            return self.next
+        
+        else:
 
-    numeros = ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9']
-    operadores = ['+', '-']
+            raise Exception(f"Caractere inválido: {self.source[self.position]}")
 
-    contador_numeros = 0
-    contador_operadores = 0
 
-    # validando operaçao na string
-    # percorrer a string como uma lista e verificar se possuo pelo menos dois números e um operador
-    for caractere in string:
 
-        if caractere in numeros:
-            contador_numeros += 1
+class Parser():
 
-        if caractere in operadores:
-            contador_operadores += 1
-
-    if contador_numeros < 2 or contador_operadores == 0 or contador_numeros == contador_operadores:
-
-        return False
     
-    return True
+    @staticmethod
+    def parse_expression(lex):
 
+        resultado = 0
 
-             
-def executa_operacao(lista_numeros, lista_operadores):
+        if lex.next.kind != 'INT':
 
-    resultado_operacao = lista_numeros[0]
+            raise Exception(f"A operação não começa com um número. Primeiro caractere: {lex.next}")
+        
+        else:
+            resultado += lex.next.value
+            lex.select_next()
 
-    for i in range(len(lista_operadores)):
+            while lex.next.kind == 'MINUS' or lex.next.kind == 'PLUS':
 
-        if lista_operadores[i] == "+":
+                operador = lex.next.kind
+                lex.select_next()
 
-            resultado_operacao += lista_numeros[i + 1]
-
-        elif lista_operadores[i] == "-":
-
-            resultado_operacao -= lista_numeros[i + 1]
-
-    return resultado_operacao
-
-
-def limpa_string(string):
-
-    string_limpa = ''
-    
-    for i in range(len(string)):
-
-        if string[i] != ' ':
-
-            string_limpa += string[i]
+                if lex.next.kind != 'INT':
+                    raise Exception(f"Não é possivel realizar a operação pois o segundo valor não é um número. Valor: {self.lex.next.value}")
+                
             
-    return string_limpa
+                else:
+
+                    if operador == 'MINUS':
+                        resultado -= lex.next.value
+
+                    else:
+                        resultado += lex.next.value
+
+                lex.select_next()
+
+        return resultado
+
+        
 
 
-if __name__ == "__main__":
-    
-    entrada = sys.argv[1]
-    compilador(entrada)
+        
 
-    
+    @staticmethod
+    def run(source_code):
 
-# string_git_fail = '  1   -   22+333   +4  '
-# compilador(string_git_fail)
+        lex = Lexer(source_code)
+
+        lex.select_next()
+
+        
+
+        resultado = Parser.parse_expression(lex)
+
+        if lex.next.kind != "EOF":
+            raise Exception("Erro de sintaxe: tokens sobrando no fim da expressão")
+
+        return resultado
+
+
+
+def main():
+    source_code = "10 - 3 + 2"
+    resultado = Parser.run(source_code)
+    print(resultado)
+
+
+if __name__ == '__main__':
+
+    main()
+        
+
+        
