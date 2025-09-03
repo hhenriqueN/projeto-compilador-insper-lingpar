@@ -81,7 +81,7 @@ class Parser():
                 lex.select_next()
 
                 if lex.next.kind != 'INT':
-                    raise Exception(f"Não é possivel realizar a operação pois o segundo valor não é um número. Valor: {self.lex.next.value}")
+                    raise Exception(f"Não é possivel realizar a operação pois o segundo valor não é um número. Valor: {lex.next.value}")
                 
             
                 else:
