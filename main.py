@@ -120,7 +120,23 @@ class Parser():
 
 
 def main():
-    source_code = input().strip()
+    source_code = sys.stdin.read().strip()
+
+    # Se não veio nada, tenta pelo input() (linha interativa)
+    if not source_code:
+        try:
+            source_code = input().strip()
+        except EOFError:
+            source_code = ""
+
+    # Se ainda estiver vazio, tenta argv
+    if not source_code and len(sys.argv) > 1:
+        # Junta todos os argumentos passados
+        source_code = " ".join(sys.argv[1:]).strip()
+
+    if not source_code:
+        raise Exception("Nenhum código recebido!")
+
     resultado = Parser.run(source_code)
     print(resultado)
     
