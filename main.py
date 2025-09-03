@@ -1,3 +1,5 @@
+import sys
+
 class Token():
 
     def __init__(self, kind, value):
@@ -117,8 +119,8 @@ class Parser():
 
 
 
-def main(source_code):
-    
+def main():
+    source_code = sys.stdin.read().strip()
     resultado = Parser.run(source_code)
     print(resultado)
 
