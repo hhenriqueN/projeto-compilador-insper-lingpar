@@ -121,7 +121,10 @@ class Parser():
 
 def main():
     source_code = sys.stdin.read().strip()
+    if not source_code:
+        raise Exception("Nenhum código recebido na entrada padrão!")
     resultado = Parser.run(source_code)
+    
     print(resultado)
 
 
