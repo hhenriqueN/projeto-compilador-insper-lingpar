@@ -39,7 +39,32 @@ class Lexer():
             self.next = Token('MINUS', self.source[self.position])
             self.position += 1
             return self.next
-
+        
+        elif self.source[self.position] == "*":
+            
+            self.next = Token('MULT', self.source[self.position])
+            self.position += 1
+            return self.next
+        
+        elif self.source[self.position] == "/":
+            
+            self.next = Token('DIV', self.source[self.position])
+            self.position += 1
+            return self.next
+        
+        elif self.source[self.position] == "(":
+            
+            self.next = Token('OPEN_PAR', self.source[self.position])
+            self.position += 1
+            return self.next
+        
+        elif self.source[self.position] == ")":
+            
+            self.next = Token('CLOSE_PAR', self.source[self.position])
+            self.position += 1
+            return self.next
+        
+    
         elif self.source[self.position].isdigit():
 
             numero = ''
@@ -64,41 +89,70 @@ class Parser():
     
     @staticmethod
     def parse_expression(lex):
-
-        resultado = 0
-
-        if lex.next.kind != 'INT':
-
-            raise Exception(f"A operação não começa com um número. Primeiro caractere: {lex.next.value}")
         
-        else:
-            resultado += lex.next.value
+        resultado = Parser.parse_term(lex)
+
+        while lex.next.kind in ("PLUS", "MINUS"):
+            operador = lex.next.kind
             lex.select_next()
-
-            while lex.next.kind == 'MINUS' or lex.next.kind == 'PLUS':
-
-                operador = lex.next.kind
-                lex.select_next()
-
-                if lex.next.kind != 'INT':
-                    raise Exception(f"Não é possivel realizar a operação pois o segundo valor não é um número. Valor: {lex.next.value}")
-                
-            
-                else:
-
-                    if operador == 'MINUS':
-                        resultado -= lex.next.value
-
-                    else:
-                        resultado += lex.next.value
-
-                lex.select_next()
+            rhs = Parser.parse_term(lex)
+            if operador == "PLUS":
+                resultado += rhs
+            else:
+                resultado -= rhs
 
         return resultado
 
+
         
 
+    @staticmethod
+    def parse_term(lex):
+        
+        resultado = Parser.parse_factor(lex)
 
+        while lex.next.kind in ("MULT", "DIV"):
+            operador = lex.next.kind
+            lex.select_next()
+            rhs = Parser.parse_factor(lex)
+            if operador == "MULT":
+                resultado *= rhs
+            else:
+                resultado //= rhs  
+
+        return resultado
+        
+
+    
+    
+    @staticmethod
+    def parse_factor(lex):
+        
+        
+        if lex.next.kind == "INT":
+            valor = lex.next.value
+            lex.select_next()
+            return valor
+
+        elif lex.next.kind == "PLUS":
+            lex.select_next()
+            return Parser.parse_factor(lex)
+
+        elif lex.next.kind == "MINUS":
+            lex.select_next()
+            return -Parser.parse_factor(lex)
+
+        elif lex.next.kind == "OPEN_PAR":
+            lex.select_next()
+            valor = Parser.parse_expression(lex)
+            if lex.next.kind != "CLOSE_PAR":
+                raise Exception("Faltando fechar parêntese")
+            lex.select_next()
+            return valor
+
+        else:
+            raise Exception(f"Token inesperado: {lex.next.kind}")
+        
         
 
     @staticmethod
@@ -116,6 +170,10 @@ class Parser():
             raise Exception("Erro de sintaxe: tokens sobrando no fim da expressão")
 
         return resultado
+    
+    
+    
+    
 
 
 
