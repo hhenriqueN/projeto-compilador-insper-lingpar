@@ -1,110 +1,135 @@
 import sys
+import re
 from abc import ABC, abstractmethod
 
-# ---------------------------
-# Classe Token
-# ---------------------------
-class Token():
+class PrePro:
+    @staticmethod
+    def filter(code: str) -> str:
+        return re.sub(r'//.*', '', code)
+
+class Token:
     def __init__(self, kind, value):
         self.kind = kind
         self.value = value
 
+class Lexer:
+    RESERVED = {"print": "PRINT"}
 
-# ---------------------------
-# Lexer
-# ---------------------------
-class Lexer():
-    def __init__(self, source):
+    def __init__(self, source: str):
         self.source = source
         self.position = 0
         self.next = None
 
+    def _peek(self):
+        if self.position < len(self.source):
+            return self.source[self.position]
+        return '\0'
+
     def select_next(self):
-        while self.position < len(self.source) and self.source[self.position] == " ":
+        while self.position < len(self.source) and self.source[self.position] in (" ", "\t", "\r"):
             self.position += 1
 
-        if self.position == len(self.source):
+        if self.position >= len(self.source):
             self.next = Token('EOF', '')
             return self.next
 
-        elif self.source[self.position] == "+":
-            self.next = Token('PLUS', '+')
-            self.position += 1
-            return self.next
+        ch = self.source[self.position]
 
-        elif self.source[self.position] == "-":
-            self.next = Token('MINUS', '-')
+        if ch == '\n':
             self.position += 1
+            self.next = Token('END', '\n')
             return self.next
-
-        elif self.source[self.position] == "*":
-            self.next = Token('MULT', '*')
+        if ch == '(':
             self.position += 1
-            return self.next
-
-        elif self.source[self.position] == "/":
-            self.next = Token('DIV', '/')
-            self.position += 1
-            return self.next
-
-        elif self.source[self.position] == "(":
             self.next = Token('OPEN_PAR', '(')
-            self.position += 1
             return self.next
-
-        elif self.source[self.position] == ")":
+        if ch == ')':
+            self.position += 1
             self.next = Token('CLOSE_PAR', ')')
+            return self.next
+        if ch == '+':
             self.position += 1
+            self.next = Token('PLUS', '+')
+            return self.next
+        if ch == '-':
+            self.position += 1
+            self.next = Token('MINUS', '-')
+            return self.next
+        if ch == '*':
+            self.position += 1
+            self.next = Token('MULT', '*')
+            return self.next
+        if ch == '/':
+            self.position += 1
+            self.next = Token('DIV', '/')
+            return self.next
+        if ch == '=':
+            self.position += 1
+            self.next = Token('ASSIGN', '=')
             return self.next
 
-        elif self.source[self.position].isdigit():
-            numero = ''
+        if ch.isdigit():
+            num = []
             while self.position < len(self.source) and self.source[self.position].isdigit():
-                numero += self.source[self.position]
+                num.append(self.source[self.position])
                 self.position += 1
-            numero = int(numero)
-            self.next = Token('INT', numero)
+            self.next = Token('INT', int(''.join(num)))
             return self.next
 
-        else:
-            raise Exception(f"Caractere inválido: {self.source[self.position]}")
+        if ch.isalpha():
+            ident = []
+            while (self.position < len(self.source) and
+                   (self.source[self.position].isalnum() or self.source[self.position] == '_')):
+                ident.append(self.source[self.position])
+                self.position += 1
+            ident_str = ''.join(ident)
+            if ident_str in Lexer.RESERVED:
+                self.next = Token(Lexer.RESERVED[ident_str], ident_str)
+            else:
+                self.next = Token('IDEN', ident_str)
+            return self.next
 
+        raise Exception(f"Caractere inválido: {ch}")
 
-# ---------------------------
-# Classe base Node
-# ---------------------------
+class Variable:
+    def __init__(self, value: int):
+        self.value = value
+
+class SymbolTable:
+    def __init__(self):
+        self._table = {}
+
+    def get(self, name: str) -> int:
+        if name not in self._table:
+            raise Exception(f"Variável '{name}' não definida")
+        return self._table[name].value
+
+    def set(self, name: str, value: int):
+        self._table[name] = Variable(value)
+
 class Node(ABC):
     def __init__(self, value, children=None):
         self.value = value
         self.children = children or []
 
     @abstractmethod
-    def evaluate(self):
+    def evaluate(self, st: SymbolTable):
         pass
 
-
-# ---------------------------
-# Nó IntVal
-# ---------------------------
 class IntVal(Node):
     def __init__(self, value):
         super().__init__(value, [])
 
-    def evaluate(self):
+    def evaluate(self, st: SymbolTable):
         return self.value
 
-
-# ---------------------------
-# Nó BinOp
-# ---------------------------
 class BinOp(Node):
     def __init__(self, value, children):
         super().__init__(value, children)
 
-    def evaluate(self):
-        left = self.children[0].evaluate()
-        right = self.children[1].evaluate()
-
+    def evaluate(self, st: SymbolTable):
+        left = self.children[0].evaluate(st)
+        right = self.children[1].evaluate(st)
         if self.value == '+':
             return left + right
         elif self.value == '-':
@@ -114,75 +139,143 @@ class BinOp(Node):
         elif self.value == '/':
             return left // right
 
-
-# ---------------------------
-# Nó UnOp
-# ---------------------------
 class UnOp(Node):
     def __init__(self, value, children):
         super().__init__(value, children)
 
-    def evaluate(self):
-        child = self.children[0].evaluate()
+    def evaluate(self, st: SymbolTable):
+        child = self.children[0].evaluate(st)
         if self.value == '+':
             return +child
         elif self.value == '-':
             return -child
 
+class Identifier(Node):
+    def __init__(self, value):
+        super().__init__(value, [])
 
-# ---------------------------
-# Parser
-# ---------------------------
+    def evaluate(self, st: SymbolTable):
+        return st.get(self.value)
+
+class Assignment(Node):
+    def __init__(self, children):
+        super().__init__('=', children)
+
+    def evaluate(self, st: SymbolTable):
+        name = self.children[0].value
+        val = self.children[1].evaluate(st)
+        st.set(name, val)
+
+class Print(Node):
+    def __init__(self, children):
+        super().__init__('print', children)
+
+    def evaluate(self, st: SymbolTable):
+        val = self.children[0].evaluate(st)
+        print(val)
+
+class Block(Node):
+    def __init__(self, children):
+        super().__init__('block', children)
+
+    def evaluate(self, st: SymbolTable):
+        for child in self.children:
+            child.evaluate(st)
+
+class NoOp(Node):
+    def __init__(self):
+        super().__init__('noop', [])
+
+    def evaluate(self, st: SymbolTable):
+        return None
+
 class Parser:
     @staticmethod
-    def parse_expression(lex):
-        node = Parser.parse_term(lex)
+    def parseProgram(lex: Lexer):
+        children = []
+        while lex.next.kind != "EOF":
+            stmt = Parser.parseStatement(lex)
+            children.append(stmt)
+        return Block(children)
 
+    @staticmethod
+    def parseStatement(lex: Lexer):
+        if lex.next.kind == "IDEN":
+            iden = Identifier(lex.next.value)
+            lex.select_next()
+            if lex.next.kind != "ASSIGN":
+                raise Exception("Esperado '='")
+            lex.select_next()
+            expr = Parser.parseExpression(lex)
+            if lex.next.kind != "END":
+                raise Exception("Esperado fim de linha")
+            lex.select_next()
+            return Assignment([iden, expr])
+
+        elif lex.next.kind == "PRINT":
+            lex.select_next()
+            if lex.next.kind != "OPEN_PAR":
+                raise Exception("Esperado '(' após print")
+            lex.select_next()
+            expr = Parser.parseExpression(lex)
+            if lex.next.kind != "CLOSE_PAR":
+                raise Exception("Esperado ')'")
+            lex.select_next()
+            if lex.next.kind != "END":
+                raise Exception("Esperado fim de linha")
+            lex.select_next()
+            return Print([expr])
+
+        elif lex.next.kind == "END":
+            lex.select_next()
+            return NoOp()
+
+        else:
+            raise Exception(f"Instrução inválida: {lex.next.kind}")
+
+    @staticmethod
+    def parseExpression(lex: Lexer):
+        node = Parser.parseTerm(lex)
         while lex.next.kind in ("PLUS", "MINUS"):
-            operador = lex.next.kind
+            op = lex.next.value
             lex.select_next()
-            right = Parser.parse_term(lex)
-            op_symbol = '+' if operador == "PLUS" else '-'
-            node = BinOp(op_symbol, [node, right])
-
+            right = Parser.parseTerm(lex)
+            node = BinOp(op, [node, right])
         return node
 
     @staticmethod
-    def parse_term(lex):
-        node = Parser.parse_factor(lex)
-
+    def parseTerm(lex: Lexer):
+        node = Parser.parseFactor(lex)
         while lex.next.kind in ("MULT", "DIV"):
-            operador = lex.next.kind
+            op = lex.next.value
             lex.select_next()
-            right = Parser.parse_factor(lex)
-            op_symbol = '*' if operador == "MULT" else '/'
-            node = BinOp(op_symbol, [node, right])
-
+            right = Parser.parseFactor(lex)
+            node = BinOp(op, [node, right])
         return node
 
     @staticmethod
-    def parse_factor(lex):
+    def parseFactor(lex: Lexer):
         if lex.next.kind == "INT":
             node = IntVal(lex.next.value)
             lex.select_next()
             return node
-
         elif lex.next.kind == "PLUS":
             lex.select_next()
-            return UnOp('+', [Parser.parse_factor(lex)])
-
+            return UnOp('+', [Parser.parseFactor(lex)])
         elif lex.next.kind == "MINUS":
             lex.select_next()
-            return UnOp('-', [Parser.parse_factor(lex)])
-
+            return UnOp('-', [Parser.parseFactor(lex)])
         elif lex.next.kind == "OPEN_PAR":
             lex.select_next()
-            node = Parser.parse_expression(lex)
+            node = Parser.parseExpression(lex)
             if lex.next.kind != "CLOSE_PAR":
                 raise Exception("Faltando fechar parêntese")
             lex.select_next()
             return node
-
+        elif lex.next.kind == "IDEN":
+            node = Identifier(lex.next.value)
+            lex.select_next()
+            return node
         else:
             raise Exception(f"Token inesperado: {lex.next.kind}")
 
@@ -190,36 +283,20 @@ class Parser:
     def run(source_code):
         lex = Lexer(source_code)
         lex.select_next()
-        node = Parser.parse_expression(lex)
+        return Parser.parseProgram(lex)
 
-        if lex.next.kind != "EOF":
-            raise Exception("Erro de sintaxe: tokens sobrando no fim da expressão")
-
-        return node
-
-
-# ---------------------------
-# Main
-# ---------------------------
 def main():
-    source_code = sys.stdin.read().strip()
+    if len(sys.argv) < 2:
+        raise Exception("Uso: python3 main.py <arquivo>")
+    filename = sys.argv[1]
+    with open(filename, "r") as f:
+        code = f.read()
+    code = PrePro.filter(code)
+    lex = Lexer(code)
+    lex.select_next()
+    ast = Parser.parseProgram(lex)
+    st = SymbolTable()
+    ast.evaluate(st)
 
-    if not source_code:
-        try:
-            source_code = input().strip()
-        except EOFError:
-            source_code = ""
-
-    if not source_code and len(sys.argv) > 1:
-        source_code = " ".join(sys.argv[1:]).strip()
-
-    if not source_code:
-        raise Exception("Nenhum código recebido!")
-
-    ast_root = Parser.run(source_code)
-    resultado = ast_root.evaluate()
-    print(resultado)
-
-
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()
