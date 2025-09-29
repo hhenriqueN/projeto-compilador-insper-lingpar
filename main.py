@@ -18,7 +18,7 @@ class Token:
         self.value = value
 
 class Lexer:
-    RESERVED = {"print": "PRINT"}
+    RESERVED = {"Println": "PRINT"}
 
     def __init__(self, source: str):
         self.source = source
