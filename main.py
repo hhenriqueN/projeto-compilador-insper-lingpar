@@ -192,6 +192,18 @@ class NoOp(Node):
 class Parser:
     @staticmethod
     def parseProgram(lex: Lexer):
+        # Entrada vazia → erro
+        if lex.next.kind == "EOF":
+            raise Exception("Entrada vazia")
+
+        # Caso especial: expressão pura (não é statement)
+        if lex.next.kind in ("INT", "PLUS", "MINUS", "OPEN_PAR", "IDEN"):
+            expr = Parser.parseExpression(lex)
+            if lex.next.kind != "EOF":
+                raise Exception("Fim de arquivo esperado após expressão")
+            return expr
+
+        # Caso geral: bloco de statements
         children = []
         while lex.next.kind != "EOF":
             stmt = Parser.parseStatement(lex)
@@ -287,24 +299,16 @@ class Parser:
 
 def main():
     if len(sys.argv) < 2:
-        raise Exception("Uso: python3 main.py <arquivo | código>")
-    arg = sys.argv[1]
-
-    try:
-        # tenta abrir como arquivo
-        with open(arg, "r") as f:
-            code = f.read()
-    except FileNotFoundError:
-        # se não for arquivo, usa o argumento como código
-        code = arg  
-
+        raise Exception("Uso: python3 main.py <arquivo>")
+    filename = sys.argv[1]
+    with open(filename, "r") as f:
+        code = f.read()
     code = PrePro.filter(code)
     lex = Lexer(code)
     lex.select_next()
     ast = Parser.parseProgram(lex)
     st = SymbolTable()
     ast.evaluate(st)
-
 
 if __name__ == "__main__":
     main()
