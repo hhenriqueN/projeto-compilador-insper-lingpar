@@ -297,18 +297,29 @@ class Parser:
         lex.select_next()
         return Parser.parseProgram(lex)
 
+import os
+
 def main():
     if len(sys.argv) < 2:
-        raise Exception("Uso: python3 main.py <arquivo>")
-    filename = sys.argv[1]
-    with open(filename, "r") as f:
-        code = f.read()
+        raise Exception("Uso: python3 main.py <arquivo | código>")
+
+    arg = sys.argv[1]
+
+    if os.path.isfile(arg):
+        # se for arquivo válido
+        with open(arg, "r") as f:
+            code = f.read()
+    else:
+        # senão, trata como código direto
+        code = arg  
+
     code = PrePro.filter(code)
     lex = Lexer(code)
     lex.select_next()
     ast = Parser.parseProgram(lex)
     st = SymbolTable()
     ast.evaluate(st)
+
 
 if __name__ == "__main__":
     main()
