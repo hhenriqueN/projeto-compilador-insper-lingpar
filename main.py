@@ -60,9 +60,12 @@ class Lexer:
             self.next = Token('MULT', '*')
             return self.next
         if ch == '/':
+            if self.position + 1 < len(self.source) and self.source[self.position + 1] == '/':
+                raise Exception("Operador '//' inválido. Use '/' para divisão.")
             self.position += 1
             self.next = Token('DIV', '/')
             return self.next
+
         if ch == '=':
             self.position += 1
             self.next = Token('ASSIGN', '=')
@@ -318,7 +321,12 @@ def main():
     lex.select_next()
     ast = Parser.parseProgram(lex)
     st = SymbolTable()
-    ast.evaluate(st)
+    result = ast.evaluate(st)
+
+    # se a raiz não for um Block nem Print → imprime resultado
+    if isinstance(ast, (IntVal, BinOp, UnOp, Identifier)):
+        print(result)
+
 
 
 if __name__ == "__main__":
