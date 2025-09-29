@@ -287,16 +287,24 @@ class Parser:
 
 def main():
     if len(sys.argv) < 2:
-        raise Exception("Uso: python3 main.py <arquivo>")
-    filename = sys.argv[1]
-    with open(filename, "r") as f:
-        code = f.read()
+        raise Exception("Uso: python3 main.py <arquivo | código>")
+    arg = sys.argv[1]
+
+    try:
+        # tenta abrir como arquivo
+        with open(arg, "r") as f:
+            code = f.read()
+    except FileNotFoundError:
+        # se não for arquivo, usa o argumento como código
+        code = arg  
+
     code = PrePro.filter(code)
     lex = Lexer(code)
     lex.select_next()
     ast = Parser.parseProgram(lex)
     st = SymbolTable()
     ast.evaluate(st)
+
 
 if __name__ == "__main__":
     main()
