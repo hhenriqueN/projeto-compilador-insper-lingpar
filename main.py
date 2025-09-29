@@ -5,7 +5,13 @@ from abc import ABC, abstractmethod
 class PrePro:
     @staticmethod
     def filter(code: str) -> str:
+        # se tiver '//' fora do padrão de comentário (ex: 3//6), erro
+        if re.search(r'\d+//\d+', code):
+            raise Exception("Uso inválido de '//' como operador. Apenas '/' é permitido para divisão.")
+
+        # remove comentários começando com // até o fim da linha
         return re.sub(r'//.*', '', code)
+
 
 class Token:
     def __init__(self, kind, value):
