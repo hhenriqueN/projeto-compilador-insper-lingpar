@@ -2,16 +2,15 @@ import sys
 import re
 from abc import ABC, abstractmethod
 
+
 class PrePro:
     @staticmethod
     def filter(code: str) -> str:
-        # se tiver '//' fora do padrão de comentário (ex: 3//6), erro
-        if re.search(r'\d+//\d+', code):
-            raise Exception("Uso inválido de '//' como operador. Apenas '/' é permitido para divisão.")
+      
+        if re.search(r'([0-9A-Za-z\)])//([0-9A-Za-z\(])', code):
+            raise Exception("Uso inválido de '//' como operador. Use '/' para divisão.")
 
-        # remove comentários começando com // até o fim da linha
-        return re.sub(r'//.*', '', code)
-
+        return re.sub(r'//[^\n]*', '', code)
 
 class Token:
     def __init__(self, kind, value):
@@ -32,6 +31,7 @@ class Lexer:
         return '\0'
 
     def select_next(self):
+        # Ignora espaços, tabs e \r (não cria tokens a partir disso)
         while self.position < len(self.source) and self.source[self.position] in (" ", "\t", "\r"):
             self.position += 1
 
@@ -41,10 +41,13 @@ class Lexer:
 
         ch = self.source[self.position]
 
+        # Nova linha -> END
         if ch == '\n':
             self.position += 1
             self.next = Token('END', '\n')
             return self.next
+
+        # Parênteses
         if ch == '(':
             self.position += 1
             self.next = Token('OPEN_PAR', '(')
@@ -53,6 +56,8 @@ class Lexer:
             self.position += 1
             self.next = Token('CLOSE_PAR', ')')
             return self.next
+
+        # Operadores
         if ch == '+':
             self.position += 1
             self.next = Token('PLUS', '+')
@@ -66,17 +71,18 @@ class Lexer:
             self.next = Token('MULT', '*')
             return self.next
         if ch == '/':
+            # Se ainda restar um '/', é inválido (comentários já foram removidos no PrePro)
             if self.position + 1 < len(self.source) and self.source[self.position + 1] == '/':
-                raise Exception("Operador '//' inválido. Use '/' para divisão.")
+                raise Exception("Uso inválido de '//' como operador. Use '/' para divisão.")
             self.position += 1
             self.next = Token('DIV', '/')
             return self.next
-
         if ch == '=':
             self.position += 1
             self.next = Token('ASSIGN', '=')
             return self.next
 
+        # Inteiros
         if ch.isdigit():
             num = []
             while self.position < len(self.source) and self.source[self.position].isdigit():
@@ -85,6 +91,7 @@ class Lexer:
             self.next = Token('INT', int(''.join(num)))
             return self.next
 
+        # Identificadores (começam com letra; podem conter letras, dígitos e '_')
         if ch.isalpha():
             ident = []
             while (self.position < len(self.source) and
@@ -100,6 +107,7 @@ class Lexer:
 
         raise Exception(f"Caractere inválido: {ch}")
 
+
 class Variable:
     def __init__(self, value: int):
         self.value = value
@@ -108,11 +116,13 @@ class SymbolTable:
     def __init__(self):
         self._table = {}
 
+    # Recupera valor de variável; erro se não existir
     def get(self, name: str) -> int:
         if name not in self._table:
             raise Exception(f"Variável '{name}' não definida")
         return self._table[name].value
 
+    # Define/atualiza variável
     def set(self, name: str, value: int):
         self._table[name] = Variable(value)
 
@@ -171,6 +181,7 @@ class Assignment(Node):
         super().__init__('=', children)
 
     def evaluate(self, st: SymbolTable):
+
         name = self.children[0].value
         val = self.children[1].evaluate(st)
         st.set(name, val)
@@ -190,6 +201,7 @@ class Block(Node):
     def evaluate(self, st: SymbolTable):
         for child in self.children:
             child.evaluate(st)
+        # Sem retorno
 
 class NoOp(Node):
     def __init__(self):
@@ -198,21 +210,18 @@ class NoOp(Node):
     def evaluate(self, st: SymbolTable):
         return None
 
+
 class Parser:
     @staticmethod
     def parseProgram(lex: Lexer):
-        # Entrada vazia → erro
+        """
+        Novo ponto de entrada: consome uma sequência de statements até EOF,
+        acumulando-os como filhos de um nó Block.
+        """
         if lex.next.kind == "EOF":
-            raise Exception("Entrada vazia")
+          
+            return Block([])
 
-        # Caso especial: expressão pura (não é statement)
-        if lex.next.kind in ("INT", "PLUS", "MINUS", "OPEN_PAR", "IDEN"):
-            expr = Parser.parseExpression(lex)
-            if lex.next.kind != "EOF":
-                raise Exception("Fim de arquivo esperado após expressão")
-            return expr
-
-        # Caso geral: bloco de statements
         children = []
         while lex.next.kind != "EOF":
             stmt = Parser.parseStatement(lex)
@@ -221,11 +230,12 @@ class Parser:
 
     @staticmethod
     def parseStatement(lex: Lexer):
+        # Atribuição: IDEN '=' expr END
         if lex.next.kind == "IDEN":
             iden = Identifier(lex.next.value)
             lex.select_next()
             if lex.next.kind != "ASSIGN":
-                raise Exception("Esperado '='")
+                raise Exception("Esperado '=' após identificador")
             lex.select_next()
             expr = Parser.parseExpression(lex)
             if lex.next.kind != "END":
@@ -233,10 +243,11 @@ class Parser:
             lex.select_next()
             return Assignment([iden, expr])
 
+        # Print: 'print' '(' expr ')' END
         elif lex.next.kind == "PRINT":
             lex.select_next()
             if lex.next.kind != "OPEN_PAR":
-                raise Exception("Esperado '(' após print")
+                raise Exception("Esperado '(' após 'print'")
             lex.select_next()
             expr = Parser.parseExpression(lex)
             if lex.next.kind != "CLOSE_PAR":
@@ -247,6 +258,7 @@ class Parser:
             lex.select_next()
             return Print([expr])
 
+        # Linha vazia: END -> NoOp
         elif lex.next.kind == "END":
             lex.select_next()
             return NoOp()
@@ -280,12 +292,15 @@ class Parser:
             node = IntVal(lex.next.value)
             lex.select_next()
             return node
+
         elif lex.next.kind == "PLUS":
             lex.select_next()
             return UnOp('+', [Parser.parseFactor(lex)])
+
         elif lex.next.kind == "MINUS":
             lex.select_next()
             return UnOp('-', [Parser.parseFactor(lex)])
+
         elif lex.next.kind == "OPEN_PAR":
             lex.select_next()
             node = Parser.parseExpression(lex)
@@ -293,10 +308,12 @@ class Parser:
                 raise Exception("Faltando fechar parêntese")
             lex.select_next()
             return node
+
         elif lex.next.kind == "IDEN":
             node = Identifier(lex.next.value)
             lex.select_next()
             return node
+
         else:
             raise Exception(f"Token inesperado: {lex.next.kind}")
 
@@ -306,34 +323,23 @@ class Parser:
         lex.select_next()
         return Parser.parseProgram(lex)
 
-import os
 
 def main():
     if len(sys.argv) < 2:
-        raise Exception("Uso: python3 main.py <arquivo | código>")
+        raise Exception("Uso: python3 main.py <arquivo>")
+    filename = sys.argv[1]
+    with open(filename, "r") as f:
+        code = f.read()
 
-    arg = sys.argv[1]
-
-    if os.path.isfile(arg):
-        # se for arquivo válido
-        with open(arg, "r") as f:
-            code = f.read()
-    else:
-        # senão, trata como código direto
-        code = arg  
 
     code = PrePro.filter(code)
+
     lex = Lexer(code)
     lex.select_next()
     ast = Parser.parseProgram(lex)
+
     st = SymbolTable()
-    result = ast.evaluate(st)
-
-    # se a raiz não for um Block nem Print → imprime resultado
-    if isinstance(ast, (IntVal, BinOp, UnOp, Identifier)):
-        print(result)
-
-
+    ast.evaluate(st)
 
 if __name__ == "__main__":
     main()
