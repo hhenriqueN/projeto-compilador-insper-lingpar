@@ -333,35 +333,43 @@ class Parser:
             return Parser.parseBlock(lex)
         if lex.next.kind == "IF":
             lex.select_next()
-            if lex.next.kind == "OPEN_PAR":
-                lex.select_next()
-                cond = Parser.parseBoolExpression(lex)
-                if lex.next.kind != "CLOSE_PAR":
-                    raise Exception("Esperado ')' após condição do if")
-                lex.select_next()
-            else:
-                cond = Parser.parseBoolExpression(lex)
-            then_stmt = Parser.parseStatement(lex)
+            cond = Parser.parseBoolExpression(lex)
+
+            # se encontrar END (nova linha) antes de '{', erro (Go exige mesma linha)
+            if lex.next.kind == "END":
+                raise Exception("Quebra de linha antes de '{' não permitida em 'if'")
+
+            # exige bloco logo após a condição
+            if lex.next.kind != "OPEN_BRA":
+                raise Exception("Esperado '{' após condição do if")
+
+            then_stmt = Parser.parseBlock(lex)
             children = [cond, then_stmt]
+
+            # 'else' precisa estar na mesma linha (sem END intermediário)
             if lex.next.kind == "ELSE":
                 lex.select_next()
+                if lex.next.kind == "END":
+                    raise Exception("Quebra de linha antes de '{' não permitida em 'else'")
                 else_stmt = Parser.parseStatement(lex)
                 children.append(else_stmt)
+
             return If(children)
 
+
         if lex.next.kind == "WHILE":
-            if lex.next.kind == "WHILE":
-                lex.select_next()
-                if lex.next.kind == "OPEN_PAR":
-                    lex.select_next()
-                    cond = Parser.parseBoolExpression(lex)
-                    if lex.next.kind != "CLOSE_PAR":
-                        raise Exception("Esperado ')' após condição do for")
-                    lex.select_next()
-                else:
-                    cond = Parser.parseBoolExpression(lex)
-                body = Parser.parseStatement(lex)
-                return While([cond, body])
+            lex.select_next()
+            cond = Parser.parseBoolExpression(lex)
+
+            if lex.next.kind == "END":
+                raise Exception("Quebra de linha antes de '{' não permitida em 'for'")
+
+            if lex.next.kind != "OPEN_BRA":
+                raise Exception("Esperado '{' após condição do for")
+
+            body = Parser.parseBlock(lex)
+            return While([cond, body])
+
 
         if lex.next.kind == "IDEN":
             iden = Identifier(lex.next.value); lex.select_next()
