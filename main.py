@@ -241,16 +241,28 @@ class Parser:
     @staticmethod
     def parseBlock(lex: Lexer):
         if lex.next.kind != "OPEN_BRA":
-            raise Exception("Esperado '{'")
+            raise Exception("Esperado '{' para iniciar bloco")
+
         lex.select_next()
+
+        # proíbe bloco vazio na mesma linha: "{ }"
+        if lex.next.kind == "CLOSE_BRA":
+            raise Exception("Bloco '{ }' mal formatado (misaligned '}')")
+
         children = []
         while lex.next.kind != "CLOSE_BRA":
             if lex.next.kind == "END":
                 lex.select_next()
                 continue
             children.append(Parser.parseStatement(lex))
+
+            # previne loops travados — se não avançar, é erro
+            if lex.next.kind == "EOF":
+                raise Exception("Bloco não fechado antes do EOF")
+
         lex.select_next()
         return Block(children)
+
 
     @staticmethod
     def parseBoolExpression(lex: Lexer):
@@ -335,23 +347,22 @@ class Parser:
             lex.select_next()
             cond = Parser.parseBoolExpression(lex)
 
-            # se encontrar END (nova linha) antes de '{', erro (Go exige mesma linha)
             if lex.next.kind == "END":
                 raise Exception("Quebra de linha antes de '{' não permitida em 'if'")
 
-            # exige bloco logo após a condição
             if lex.next.kind != "OPEN_BRA":
                 raise Exception("Esperado '{' após condição do if")
 
             then_stmt = Parser.parseBlock(lex)
             children = [cond, then_stmt]
 
-            # 'else' precisa estar na mesma linha (sem END intermediário)
             if lex.next.kind == "ELSE":
                 lex.select_next()
                 if lex.next.kind == "END":
                     raise Exception("Quebra de linha antes de '{' não permitida em 'else'")
-                else_stmt = Parser.parseStatement(lex)
+                if lex.next.kind != "OPEN_BRA":
+                    raise Exception("Esperado '{' após 'else'")
+                else_stmt = Parser.parseBlock(lex)
                 children.append(else_stmt)
 
             return If(children)
@@ -365,7 +376,7 @@ class Parser:
                 raise Exception("Quebra de linha antes de '{' não permitida em 'for'")
 
             if lex.next.kind != "OPEN_BRA":
-                raise Exception("Esperado '{' após condição do for")
+                raise Exception("Esperado '{' após condição do for'")
 
             body = Parser.parseBlock(lex)
             return While([cond, body])
