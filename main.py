@@ -333,11 +333,14 @@ class Parser:
             return Parser.parseBlock(lex)
         if lex.next.kind == "IF":
             lex.select_next()
-            if lex.next.kind != "OPEN_PAR": raise Exception("Esperado '('")
-            lex.select_next()
-            cond = Parser.parseBoolExpression(lex)
-            if lex.next.kind != "CLOSE_PAR": raise Exception("Esperado ')'")
-            lex.select_next()
+            if lex.next.kind == "OPEN_PAR":
+                lex.select_next()
+                cond = Parser.parseBoolExpression(lex)
+                if lex.next.kind != "CLOSE_PAR":
+                    raise Exception("Esperado ')' após condição do if")
+                lex.select_next()
+            else:
+                cond = Parser.parseBoolExpression(lex)
             then_stmt = Parser.parseStatement(lex)
             children = [cond, then_stmt]
             if lex.next.kind == "ELSE":
@@ -345,15 +348,21 @@ class Parser:
                 else_stmt = Parser.parseStatement(lex)
                 children.append(else_stmt)
             return If(children)
+
         if lex.next.kind == "WHILE":
-            lex.select_next()
-            if lex.next.kind != "OPEN_PAR": raise Exception("Esperado '('")
-            lex.select_next()
-            cond = Parser.parseBoolExpression(lex)
-            if lex.next.kind != "CLOSE_PAR": raise Exception("Esperado ')'")
-            lex.select_next()
-            body = Parser.parseStatement(lex)
-            return While([cond, body])
+            if lex.next.kind == "WHILE":
+                lex.select_next()
+                if lex.next.kind == "OPEN_PAR":
+                    lex.select_next()
+                    cond = Parser.parseBoolExpression(lex)
+                    if lex.next.kind != "CLOSE_PAR":
+                        raise Exception("Esperado ')' após condição do for")
+                    lex.select_next()
+                else:
+                    cond = Parser.parseBoolExpression(lex)
+                body = Parser.parseStatement(lex)
+                return While([cond, body])
+
         if lex.next.kind == "IDEN":
             iden = Identifier(lex.next.value); lex.select_next()
             if lex.next.kind != "ASSIGN": raise Exception("Esperado '='")
