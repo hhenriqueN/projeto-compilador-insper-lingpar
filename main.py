@@ -129,22 +129,22 @@ class SymbolTable:
 
     def create_variable(self, name: str, type: str):
         if name in self._table:
-            raise Exception(f"[Semântico] Variável '{name}' já declarada.")
+            raise Exception(f"[Semantic] Variável '{name}' já declarada.")
         self._table[name] = Variable(None, type)
 
     def set(self, name: str, var: Variable):
         if name not in self._table:
-            raise Exception(f"[Semântico] Variável '{name}' não declarada.")
+            raise Exception(f"[Semantic] Variável '{name}' não declarada.")
         if self._table[name].type != var.type:
-            raise Exception(f"[Semântico] Atribuição de tipo inválido para '{name}'. Esperado '{self._table[name].type}', recebido '{var.type}'.")
+            raise Exception(f"[Semantic] Atribuição de tipo inválido para '{name}'. Esperado '{self._table[name].type}', recebido '{var.type}'.")
         self._table[name] = var
 
     def get(self, name: str) -> Variable:
         if name not in self._table:
-            raise Exception(f"[Semântico] Variável '{name}' não definida.")
+            raise Exception(f"[Semantic] Variável '{name}' não definida.")
         var = self._table[name]
         if var.value is None:
-            raise Exception(f"[Semântico] Variável '{name}' usada antes de ser inicializada.")
+            raise Exception(f"[Semantic] Variável '{name}' usada antes de ser inicializada.")
         return var
 
 class Node(ABC):
@@ -197,31 +197,31 @@ class BinOp(Node):
             if left.type == "string" or right.type == "string":
                 return Variable(_coerce_to_string(left) + _coerce_to_string(right), "string")
             
-            raise Exception("[Semântico] Operação '+' inválida para os tipos")
+            raise Exception("[Semantic] Operação '+' inválida para os tipos")
 
         if op in ('-', '*', '/'):
             if left.type != "int" or right.type != "int":
-                raise Exception(f"[Semântico] Operador '{op}' requer dois inteiros.")
+                raise Exception(f"[Semantic] Operador '{op}' requer dois inteiros.")
             if op == '/' and right.value == 0:
-                raise Exception("[Semântico] Divisão por zero.")
+                raise Exception("[Semantic] Divisão por zero.")
             if op == '-': return Variable(left.value - right.value, "int")
             if op == '*': return Variable(left.value * right.value, "int")
             if op == '/': return Variable(left.value // right.value, "int")
 
         if op in ('==', '>', '<'):
             if left.type != right.type:
-                raise Exception(f"[Semântico] Comparação '{op}' requer tipos iguais.")
+                raise Exception(f"[Semantic] Comparação '{op}' requer tipos iguais.")
             if op == '==': return Variable(left.value == right.value, "bool")
             if op == '>': return Variable(left.value > right.value, "bool")
             if op == '<': return Variable(left.value < right.value, "bool")
         
         if op in ('&&', '||'):
             if left.type != "bool" or right.type != "bool":
-                raise Exception(f"[Semântico] Operador lógico '{op}' requer dois booleanos.")
+                raise Exception(f"[Semantic] Operador lógico '{op}' requer dois booleanos.")
             if op == '&&': return Variable(left.value and right.value, "bool")
             if op == '||': return Variable(left.value or right.value, "bool")
 
-        raise Exception(f"[Semântico] Operador binário desconhecido: {op}")
+        raise Exception(f"[Semantic] Operador binário desconhecido: {op}")
 
 class UnOp(Node):
     def __init__(self, value, children):
@@ -232,15 +232,15 @@ class UnOp(Node):
         
         if op in ('+', '-'):
             if child.type != "int":
-                raise Exception(f"[Semântico] Operador unário '{op}' requer um inteiro.")
+                raise Exception(f"[Semantic] Operador unário '{op}' requer um inteiro.")
             return Variable(+child.value if op == '+' else -child.value, "int")
         
         if op == '!':
             if child.type != "bool":
-                raise Exception("[Semântico] Operador '!' requer um booleano.")
+                raise Exception("[Semantic] Operador '!' requer um booleano.")
             return Variable(not child.value, "bool")
         
-        raise Exception(f"[Semântico] Operador unário desconhecido: {op}")
+        raise Exception(f"[Semantic] Operador unário desconhecido: {op}")
 
 class Identifier(Node):
     def __init__(self, value):
@@ -297,7 +297,7 @@ class Read(Node):
         try:
             return Variable(int(input().strip()), "int")
         except (ValueError, TypeError):
-            raise Exception("[Semântico] Entrada de Scanln deve ser um inteiro.")
+            raise Exception("[Semantic] Entrada de Scanln deve ser um inteiro.")
 
 class If(Node):
     def __init__(self, children):
@@ -305,7 +305,7 @@ class If(Node):
     def evaluate(self, st: SymbolTable):
         cond = self.children[0].evaluate(st)
         if cond.type != "bool":
-            raise Exception("[Semântico] Condição do 'if' deve ser booleana.")
+            raise Exception("[Semantic] Condição do 'if' deve ser booleana.")
         if cond.value:
             self.children[1].evaluate(st)
         elif len(self.children) == 3:
@@ -318,7 +318,7 @@ class While(Node):
         while True:
             cond = self.children[0].evaluate(st)
             if cond.type != "bool":
-                raise Exception("[Semântico] Condição do 'while' deve ser booleana.")
+                raise Exception("[Semantic] Condição do 'while' deve ser booleana.")
             if not cond.value:
                 break
             self.children[1].evaluate(st)
@@ -442,7 +442,7 @@ class Parser:
             op_val = lex.next.value
             raise Exception(f"[Parser] Expressão não pode começar com o operador binário '{op_val}'")
         
-        raise Exception(f"[Parser] Fator inválido. Token inesperado: {lex.next.kind}")
+        raise Exception(f"[Semantic] Fator inválido. Token inesperado: {lex.next.kind}")
 
     @staticmethod
     def parseStatement(lex: Lexer):
@@ -454,7 +454,7 @@ class Parser:
             if lex.next.kind != "IDEN": raise Exception("[Parser] Esperado identificador após 'var'")
             iden = Identifier(lex.next.value); lex.select_next()
             
-            if lex.next.kind != "TYPE": raise Exception("[Parser] Esperado tipo (int, string, bool) após identificador")
+            if lex.next.kind != "TYPE": raise Exception("[Semantic] Esperado tipo (int, string, bool) após identificador")
             var_type = lex.next.value; lex.select_next()
             
             children = [iden]
@@ -467,7 +467,7 @@ class Parser:
                 children.append(expr)
             
             if lex.next.kind != "END": 
-                raise Exception(f"[Parser] Token inesperado '{lex.next.value}' após a expressão. Esperado fim de linha.")
+                raise Exception(f"[Semantic] Token inesperado '{lex.next.value}' após a expressão. Esperado fim de linha.")
             lex.select_next()
             return VarDec(var_type, children)
 
@@ -497,7 +497,7 @@ class Parser:
             lex.select_next()
             expr = Parser.parseBoolExpression(lex)
             if lex.next.kind != "END": 
-                raise Exception(f"[Parser] Token inesperado '{lex.next.value}' após a expressão. Esperado fim de linha.")
+                raise Exception(f"[Semantic] Token inesperado '{lex.next.value}' após a expressão. Esperado fim de linha.")
             lex.select_next()
             return Assignment([iden, expr])
 
@@ -508,7 +508,7 @@ class Parser:
             expr = Parser.parseBoolExpression(lex)
             if lex.next.kind != "CLOSE_PAR": raise Exception("[Parser] Esperado ')'")
             lex.select_next()
-            if lex.next.kind != "END": raise Exception("[Parser] Esperado fim de linha após Println")
+            if lex.next.kind != "END": raise Exception("[Semantic] Esperado fim de linha após Println")
             lex.select_next()
             return Print([expr])
 
