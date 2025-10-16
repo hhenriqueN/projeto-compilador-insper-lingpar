@@ -350,9 +350,9 @@ class Parser:
         if lex.next.kind == "VAR":
             lex.select_next()
             if lex.next.kind != "IDEN": raise Exception("[Parser] Expected identifier after 'var'")
-            iden = Identifier(lex.next.value); lex.select_next()
+            iden = Identifier(lex.next.kind, lex.select_next())
             
-            # LÓGICA CORRIGIDA: O TIPO É OBRIGATÓRIO
+            # CORREÇÃO: A regra é estrita. O tipo é obrigatório.
             if lex.next.kind != "TYPE":
                 raise Exception("[Parser] Expected type (int, string, bool) after identifier")
             
