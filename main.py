@@ -6,7 +6,7 @@ class PrePro:
     @staticmethod
     def filter(code: str) -> str:
         if re.search(r'([0-9A-Za-z\)])//([0-9A-Za-z\(])', code):
-            raise Exception("Uso inválido de '//' como operador. Use '/' para divisão.")
+            raise Exception("[Parser] Uso inválido de '//' como operador. Use '/' para divisão.")
         return re.sub(r'//.*', '', code)
 
 class Token:
@@ -221,7 +221,7 @@ class BinOp(Node):
             if op == '&&': return Variable(left.value and right.value, "bool")
             if op == '||': return Variable(left.value or right.value, "bool")
 
-        raise Exception(f"Operador binário desconhecido: {op}")
+        raise Exception(f"[Semântico] Operador binário desconhecido: {op}")
 
 class UnOp(Node):
     def __init__(self, value, children):
@@ -240,7 +240,7 @@ class UnOp(Node):
                 raise Exception("[Semântico] Operador '!' requer um booleano.")
             return Variable(not child.value, "bool")
         
-        raise Exception(f"Operador unário desconhecido: {op}")
+        raise Exception(f"[Semântico] Operador unário desconhecido: {op}")
 
 class Identifier(Node):
     def __init__(self, value):
@@ -474,12 +474,12 @@ class Parser:
         if lex.next.kind == "IF":
             lex.select_next()
             cond = Parser.parseBoolExpression(lex)
-            if lex.next.kind != "OPEN_BRA": raise Exception("Esperado '{' após condição do if")
+            if lex.next.kind != "OPEN_BRA": raise Exception("[Parser] Esperado '{' após condição do if")
             then_stmt = Parser.parseBlock(lex)
             children = [cond, then_stmt]
             if lex.next.kind == "ELSE":
                 lex.select_next()
-                if lex.next.kind != "OPEN_BRA": raise Exception("Esperado '{' após 'else'")
+                if lex.next.kind != "OPEN_BRA": raise Exception("[Parser] Esperado '{' após 'else'")
                 else_stmt = Parser.parseBlock(lex)
                 children.append(else_stmt)
             return If(children)
@@ -487,13 +487,13 @@ class Parser:
         if lex.next.kind == "WHILE":
             lex.select_next()
             cond = Parser.parseBoolExpression(lex)
-            if lex.next.kind != "OPEN_BRA": raise Exception("Esperado '{' após condição do for/while")
+            if lex.next.kind != "OPEN_BRA": raise Exception("[Parser] Esperado '{' após condição do for/while")
             body = Parser.parseBlock(lex)
             return While([cond, body])
 
         if lex.next.kind == "IDEN":
             iden = Identifier(lex.next.value); lex.select_next()
-            if lex.next.kind != "ASSIGN": raise Exception("Esperado '=' para atribuição")
+            if lex.next.kind != "ASSIGN": raise Exception("[Parser] Esperado '=' para atribuição")
             lex.select_next()
             expr = Parser.parseBoolExpression(lex)
             if lex.next.kind != "END": 
