@@ -351,20 +351,21 @@ class Parser:
             lex.select_next()
             if lex.next.kind != "IDEN": raise Exception("[Parser] Expected identifier after 'var'")
             iden = Identifier(lex.next.value); lex.select_next()
-            var_type = None; children = [iden]
-            if lex.next.kind == "TYPE":
-                var_type = lex.next.value; lex.select_next()
-                if lex.next.kind == "ASSIGN":
-                    lex.select_next()
-                    if lex.next.kind in ("END", "EOF"): raise Exception("[Parser] Expected expression after '=' in declaration")
-                    expr = Parser.parseBoolExpression(lex); children.append(expr)
-            elif lex.next.kind == "ASSIGN":
+            
+            # LÓGICA CORRIGIDA: O TIPO É OBRIGATÓRIO
+            if lex.next.kind != "TYPE":
+                raise Exception("[Parser] Expected type (int, string, bool) after identifier")
+            
+            var_type = lex.next.value; lex.select_next()
+            children = [iden]
+            
+            if lex.next.kind == "ASSIGN":
                 lex.select_next()
                 if lex.next.kind in ("END", "EOF"): raise Exception("[Parser] Expected expression after '=' in declaration")
                 expr = Parser.parseBoolExpression(lex); children.append(expr)
-            else:
-                raise Exception("[Parser] Invalid variable declaration; expected type or assignment after identifier")
+            
             node = VarDec(var_type, children)
+
         elif lex.next.kind == "IF":
             lex.select_next(); cond = Parser.parseBoolExpression(lex)
             if lex.next.kind != "OPEN_BRA": raise Exception("[Parser] Expected '{' after if condition")
@@ -374,26 +375,32 @@ class Parser:
                 if lex.next.kind != "OPEN_BRA": raise Exception("[Parser] Expected '{' after 'else'")
                 else_stmt = Parser.parseBlock(lex); children.append(else_stmt)
             return If(children)
+
         elif lex.next.kind == "WHILE":
             lex.select_next(); cond = Parser.parseBoolExpression(lex)
             if lex.next.kind != "OPEN_BRA": raise Exception("[Parser] Expected '{' after while condition")
             body = Parser.parseBlock(lex); return While([cond, body])
+
         elif lex.next.kind == "IDEN":
             iden = Identifier(lex.next.value); lex.select_next()
             if lex.next.kind != "ASSIGN": raise Exception("[Parser] Expected '=' for assignment")
             lex.select_next(); expr = Parser.parseBoolExpression(lex)
             node = Assignment([iden, expr])
+            
         elif lex.next.kind == "PRINT":
             lex.select_next()
             if lex.next.kind != "OPEN_PAR": raise Exception("[Parser] Expected '(' after Println")
             lex.select_next(); expr = Parser.parseBoolExpression(lex)
             if lex.next.kind != "CLOSE_PAR": raise Exception("[Parser] Expected ')' after Println expression")
             lex.select_next(); node = Print([expr])
+
         elif lex.next.kind == "END":
             lex.select_next(); return NoOp()
+            
         else:
             raise Exception(f"[Parser] Invalid statement. Token: {lex.next.kind}")
 
+        # Lógica de fim de linha
         if lex.next.kind == "END":
             lex.select_next(); return node
         elif lex.next.kind == "EOF":
