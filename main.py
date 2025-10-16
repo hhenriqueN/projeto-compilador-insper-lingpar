@@ -5,6 +5,7 @@ from abc import ABC, abstractmethod
 class PrePro:
     @staticmethod
     def filter(code: str) -> str:
+        # [Parser] Erro de sintaxe, pois a regra da linguagem proíbe o uso de '//' como operador.
         if re.search(r'([0-9A-Za-z\)])//([0-9A-Za-z\(])', code):
             raise Exception("[Parser] Invalid use of '//' as an operator. Use '/' for division.")
         return re.sub(r'//.*', '', code)
@@ -30,19 +31,15 @@ class Lexer:
         return '\0'
 
     def select_next(self):
-        while self.position < len(self.source) and self.source[self.position] in (" ", "\t", "\r"):
-            self.position += 1
-        
-        if self.position >= len(self.source):
-            self.next = Token('EOF', ''); return
-        
+        while self.position < len(self.source) and self.source[self.position] in (" ", "\t", "\r"): self.position += 1
+        if self.position >= len(self.source): self.next = Token('EOF', ''); return
         ch = self.source[self.position]
-
         if ch == '\n': self.position += 1; self.next = Token('END', '\n'); return
         if ch == '"':
             self.position += 1; buf = []
             while self.position < len(self.source) and self.source[self.position] != '"':
                 buf.append(self.source[self.position]); self.position += 1
+            # [Lexer] Erro de token malformado.
             if self.position >= len(self.source): raise Exception("[Lexer] Unterminated string")
             self.position += 1; self.next = Token("STR", "".join(buf)); return
         if ch == '(': self.position += 1; self.next = Token('OPEN_PAR', '('); return
@@ -78,6 +75,7 @@ class Lexer:
             if ident_str in Lexer.RESERVED: self.next = Token(Lexer.RESERVED[ident_str], ident_str)
             else: self.next = Token('IDEN', ident_str)
             return
+        # [Lexer] Erro de caractere inválido que não pertence a nenhum token.
         raise Exception(f"[Lexer] Invalid character: {ch}")
 
 class Variable:
@@ -86,6 +84,7 @@ class Variable:
         self.type = type
 
 class SymbolTable:
+    # A SymbolTable é o coração da análise semântica. Todos os erros aqui são [Semantic].
     def __init__(self):
         self._table = {}
 
@@ -114,8 +113,7 @@ class Node(ABC):
         self.value = value
         self.children = children or []
     @abstractmethod
-    def evaluate(self, st: SymbolTable):
-        pass
+    def evaluate(self, st: SymbolTable): pass
 
 class IntVal(Node):
     def __init__(self, value): super().__init__(value, [])
@@ -130,6 +128,7 @@ class BoolVal(Node):
     def evaluate(self, st: SymbolTable): return Variable(self.value, "bool")
 
 class BinOp(Node):
+    # Erros em BinOp são semânticos, pois a sintaxe está correta, mas a lógica (tipos) não.
     def __init__(self, value, children): super().__init__(value, children)
     def evaluate(self, st: SymbolTable):
         left = self.children[0].evaluate(st)
@@ -161,6 +160,7 @@ class BinOp(Node):
         raise Exception(f"[Semantic] Unknown binary operator: {op}")
 
 class UnOp(Node):
+    # Erros em UnOp são semânticos.
     def __init__(self, value, children): super().__init__(value, children)
     def evaluate(self, st: SymbolTable):
         child = self.children[0].evaluate(st)
@@ -178,32 +178,22 @@ class Identifier(Node):
     def evaluate(self, st: SymbolTable): return st.get(self.value)
 
 class VarDec(Node):
-    def __init__(self, value, children):
-        super().__init__(value, children)
+    # Este nó lida com a lógica da declaração, tornando os erros aqui semânticos.
+    def __init__(self, value, children): super().__init__(value, children)
     def evaluate(self, st: SymbolTable):
         var_name = self.children[0].value
         var_type = self.value # Pode ser None
-
-        # Caso 1: A declaração tem um valor inicial (ex: var x = 4 ou var x int = 4)
         if len(self.children) > 1:
             expr_val = self.children[1].evaluate(st)
-            
-            # Se o tipo não foi dado, inferimos a partir da expressão
-            if var_type is None:
-                var_type = expr_val.type
-            # Se o tipo foi dado, verificamos se é compatível
+            if var_type is None: var_type = expr_val.type
             elif var_type != expr_val.type:
                 raise Exception(f"[Semantic] Cannot use value of type '{expr_val.type}' to initialize variable '{var_name}' of type '{var_type}'.")
-            
             st.create_variable(var_name, var_type)
             st.set(var_name, expr_val)
-        
-        # Caso 2: A declaração não tem valor inicial (ex: var x int)
         else:
-            # ESTE É O NOVO ERRO SEMÂNTICO!
+            # [Semantic] A sintaxe 'var x' foi aceita, mas semanticamente é ambígua.
             if var_type is None:
                 raise Exception(f"[Semantic] Cannot declare variable '{var_name}' without a type or an initial value.")
-            
             st.create_variable(var_name, var_type)
 
 class Assignment(Node):
@@ -233,12 +223,14 @@ class Read(Node):
     def __init__(self): super().__init__('read', [])
     def evaluate(self, st: SymbolTable):
         try: return Variable(int(input().strip()), "int")
+        # [Semantic] Erro de tipo em tempo de execução.
         except (ValueError, TypeError): raise Exception("[Semantic] Scanln input must be an integer.")
 
 class If(Node):
     def __init__(self, children): super().__init__('if', children)
     def evaluate(self, st: SymbolTable):
         cond = self.children[0].evaluate(st)
+        # [Semantic] A sintaxe 'if (1+1)' é válida, mas o significado é incorreto.
         if cond.type != "bool": raise Exception("[Semantic] 'if' condition must be a boolean.")
         if cond.value: self.children[1].evaluate(st)
         elif len(self.children) == 3: self.children[2].evaluate(st)
@@ -248,11 +240,13 @@ class While(Node):
     def evaluate(self, st: SymbolTable):
         while True:
             cond = self.children[0].evaluate(st)
+            # [Semantic] A sintaxe 'while (variavel_int)' é válida, mas o significado é incorreto.
             if cond.type != "bool": raise Exception("[Semantic] 'while' condition must be a boolean.")
             if not cond.value: break
             self.children[1].evaluate(st)
 
 class Parser:
+    # O Parser verifica a gramática. Todos os erros aqui são [Parser].
     @staticmethod
     def parseProgram(lex: Lexer):
         children = []
@@ -357,27 +351,19 @@ class Parser:
             lex.select_next()
             if lex.next.kind != "IDEN": raise Exception("[Parser] Expected identifier after 'var'")
             iden = Identifier(lex.next.value); lex.select_next()
-            
-            var_type = None
-            children = [iden]
-
-            # CASO 1: Tem um tipo explícito
+            var_type = None; children = [iden]
             if lex.next.kind == "TYPE":
-                var_type = lex.next.value
-                lex.select_next()
+                var_type = lex.next.value; lex.select_next()
                 if lex.next.kind == "ASSIGN":
                     lex.select_next()
                     if lex.next.kind in ("END", "EOF"): raise Exception("[Parser] Expected expression after '=' in declaration")
                     expr = Parser.parseBoolExpression(lex); children.append(expr)
-            # CASO 2: Não tem tipo, mas tem atribuição (para inferência)
             elif lex.next.kind == "ASSIGN":
                 lex.select_next()
                 if lex.next.kind in ("END", "EOF"): raise Exception("[Parser] Expected expression after '=' in declaration")
                 expr = Parser.parseBoolExpression(lex); children.append(expr)
-            # CASO INVÁLIDO: Nem tipo, nem atribuição
             else:
                 raise Exception("[Parser] Invalid variable declaration; expected type or assignment after identifier")
-
             node = VarDec(var_type, children)
         elif lex.next.kind == "IF":
             lex.select_next(); cond = Parser.parseBoolExpression(lex)
