@@ -442,7 +442,7 @@ class Parser:
             op_val = lex.next.value
             raise Exception(f"[Parser] Expressão não pode começar com o operador binário '{op_val}'")
         
-        raise Exception(f"[Semantic] Fator inválido. Token inesperado: {lex.next.kind}")
+        raise Exception(f"[Parser] Fator inválido. Token inesperado: {lex.next.kind}")
 
     @staticmethod
     def parseStatement(lex: Lexer):
@@ -467,7 +467,7 @@ class Parser:
                 children.append(expr)
             
             if lex.next.kind != "END": 
-                raise Exception(f"[Semantic] Token inesperado '{lex.next.value}' após a expressão. Esperado fim de linha.")
+                raise Exception(f"[Parser] Token inesperado '{lex.next.value}' após a expressão. Esperado fim de linha.")
             lex.select_next()
             return VarDec(var_type, children)
 
@@ -497,7 +497,7 @@ class Parser:
             lex.select_next()
             expr = Parser.parseBoolExpression(lex)
             if lex.next.kind != "END": 
-                raise Exception(f"[Semantic] Token inesperado '{lex.next.value}' após a expressão. Esperado fim de linha.")
+                raise Exception(f"[Parser] Token inesperado '{lex.next.value}' após a expressão. Esperado fim de linha.")
             lex.select_next()
             return Assignment([iden, expr])
 
