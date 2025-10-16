@@ -116,7 +116,7 @@ class Lexer:
                 self.next = Token('IDEN', ident_str)
             return self.next
         
-        raise Exception(f"Caractere inválido: {ch}")
+        raise Exception(f"[Lexer] Caractere inválido: {ch}")
 
 class Variable:
     def __init__(self, value, type: str):
@@ -410,11 +410,17 @@ class Parser:
         if lex.next.kind == "BOOL":
             node = BoolVal(lex.next.value); lex.select_next(); return node
         if lex.next.kind == "PLUS":
-            lex.select_next(); return UnOp('+', [Parser.parseFactor(lex)])
+            op = lex.next.value; lex.select_next()
+            if lex.next.kind in ("EOF", "END"): raise Exception(f"[Parser] Expressão incompleta após o operador unário '{op}'")
+            return UnOp('+', [Parser.parseFactor(lex)])
         if lex.next.kind == "MINUS":
-            lex.select_next(); return UnOp('-', [Parser.parseFactor(lex)])
+            op = lex.next.value; lex.select_next()
+            if lex.next.kind in ("EOF", "END"): raise Exception(f"[Parser] Expressão incompleta após o operador unário '{op}'")
+            return UnOp('-', [Parser.parseFactor(lex)])
         if lex.next.kind == "NOT":
-            lex.select_next(); return UnOp('!', [Parser.parseFactor(lex)])
+            op = lex.next.value; lex.select_next()
+            if lex.next.kind in ("EOF", "END"): raise Exception(f"[Parser] Expressão incompleta após o operador unário '{op}'")
+            return UnOp('!', [Parser.parseFactor(lex)])
         if lex.next.kind == "OPEN_PAR":
             lex.select_next()
             node = Parser.parseBoolExpression(lex)
@@ -450,6 +456,9 @@ class Parser:
             children = [iden]
             if lex.next.kind == "ASSIGN":
                 lex.select_next() # Consome '='
+
+                if lex.next.kind in ("END", "EOF"):
+                    raise Exception("[Parser] Esperada uma expressão após '=' na declaração")
                 expr = Parser.parseBoolExpression(lex)
                 children.append(expr)
             
