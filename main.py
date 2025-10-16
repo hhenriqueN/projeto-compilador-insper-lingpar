@@ -335,10 +335,10 @@ class Parser:
     @staticmethod
     def parseBlock(lex: Lexer):
         if lex.next.kind != "OPEN_BRA":
-            raise Exception("Esperado '{' para iniciar bloco")
+            raise Exception("[Parser] Esperado '{' para iniciar bloco")
         lex.select_next()
         if lex.next.kind == "CLOSE_BRA":
-            raise Exception("Bloco '{ }' mal formatado (misaligned '}')")
+            raise Exception("[Parser] Bloco '{ }' mal formatado (misaligned '}')")
         children = []
         while lex.next.kind != "CLOSE_BRA":
             if lex.next.kind == "END":
@@ -346,7 +346,7 @@ class Parser:
                 continue
             children.append(Parser.parseStatement(lex))
             if lex.next.kind == "EOF":
-                raise Exception("Bloco não fechado antes do EOF")
+                raise Exception("[Parser] Bloco não fechado antes do EOF")
         lex.select_next()
         return Block(children)
 
@@ -425,14 +425,14 @@ class Parser:
             lex.select_next()
             node = Parser.parseBoolExpression(lex)
             if lex.next.kind != "CLOSE_PAR":
-                raise Exception("Faltando fechar parêntese")
+                raise Exception("[Parser] Faltando fechar parêntese")
             lex.select_next()
             return node
         if lex.next.kind == "READ":
             lex.select_next()
-            if lex.next.kind != "OPEN_PAR": raise Exception("Esperado '(' após Scanln")
+            if lex.next.kind != "OPEN_PAR": raise Exception("[Parser] Esperado '(' após Scanln")
             lex.select_next()
-            if lex.next.kind != "CLOSE_PAR": raise Exception("Esperado ')'")
+            if lex.next.kind != "CLOSE_PAR": raise Exception("[Parser] Esperado ')'")
             lex.select_next()
             return Read()
         if lex.next.kind == "IDEN":
@@ -442,7 +442,7 @@ class Parser:
             op_val = lex.next.value
             raise Exception(f"[Parser] Expressão não pode começar com o operador binário '{op_val}'")
         
-        raise Exception(f"Fator inválido. Token inesperado: {lex.next.kind}")
+        raise Exception(f"[Parser] Fator inválido. Token inesperado: {lex.next.kind}")
 
     @staticmethod
     def parseStatement(lex: Lexer):
@@ -451,10 +451,10 @@ class Parser:
         
         if lex.next.kind == "VAR":
             lex.select_next() # Consome 'var'
-            if lex.next.kind != "IDEN": raise Exception("Esperado identificador após 'var'")
+            if lex.next.kind != "IDEN": raise Exception("[Parser] Esperado identificador após 'var'")
             iden = Identifier(lex.next.value); lex.select_next()
             
-            if lex.next.kind != "TYPE": raise Exception("Esperado tipo (int, string, bool) após identificador")
+            if lex.next.kind != "TYPE": raise Exception("[Parser] Esperado tipo (int, string, bool) após identificador")
             var_type = lex.next.value; lex.select_next()
             
             children = [iden]
@@ -466,7 +466,8 @@ class Parser:
                 expr = Parser.parseBoolExpression(lex)
                 children.append(expr)
             
-            if lex.next.kind != "END": raise Exception("Esperado fim de linha após declaração")
+            if lex.next.kind != "END": 
+                raise Exception(f"[Parser] Token inesperado '{lex.next.value}' após a expressão. Esperado fim de linha.")
             lex.select_next()
             return VarDec(var_type, children)
 
@@ -495,18 +496,19 @@ class Parser:
             if lex.next.kind != "ASSIGN": raise Exception("Esperado '=' para atribuição")
             lex.select_next()
             expr = Parser.parseBoolExpression(lex)
-            if lex.next.kind != "END": raise Exception("Esperado fim de linha após atribuição")
+            if lex.next.kind != "END": 
+                raise Exception(f"[Parser] Token inesperado '{lex.next.value}' após a expressão. Esperado fim de linha.")
             lex.select_next()
             return Assignment([iden, expr])
 
         if lex.next.kind == "PRINT":
             lex.select_next()
-            if lex.next.kind != "OPEN_PAR": raise Exception("Esperado '(' após Println")
+            if lex.next.kind != "OPEN_PAR": raise Exception("[Parser] Esperado '(' após Println")
             lex.select_next()
             expr = Parser.parseBoolExpression(lex)
-            if lex.next.kind != "CLOSE_PAR": raise Exception("Esperado ')'")
+            if lex.next.kind != "CLOSE_PAR": raise Exception("[Parser] Esperado ')'")
             lex.select_next()
-            if lex.next.kind != "END": raise Exception("Esperado fim de linha após Println")
+            if lex.next.kind != "END": raise Exception("[Parser] Esperado fim de linha após Println")
             lex.select_next()
             return Print([expr])
 
@@ -514,7 +516,7 @@ class Parser:
             lex.select_next()
             return NoOp()
         
-        raise Exception(f"Instrução inválida. Token: {lex.next.kind}")
+        raise Exception(f"[Parser] Instrução inválida. Token: {lex.next.kind}")
 
     @staticmethod
     def run(source_code):
