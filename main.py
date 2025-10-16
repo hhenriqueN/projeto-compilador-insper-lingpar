@@ -178,23 +178,37 @@ class Identifier(Node):
     def evaluate(self, st: SymbolTable): return st.get(self.value)
 
 class VarDec(Node):
-    # Este nó lida com a lógica da declaração, tornando os erros aqui semânticos.
-    def __init__(self, value, children): super().__init__(value, children)
+    # Neste modelo, a ausência de TYPE é um erro SEMÂNTICO,
+    # mesmo quando há inicialização.
+    def __init__(self, value, children):
+        super().__init__(value, children)
+
     def evaluate(self, st: SymbolTable):
         var_name = self.children[0].value
-        var_type = self.value # Pode ser None
-        if len(self.children) > 1:
+        var_type = self.value  # Pode ser None se o parser não viu TYPE
+        has_init = len(self.children) > 1
+
+        # Regra exigida pelos testes: TYPE é obrigatório na declaração com 'var'
+        if var_type is None:
+            raise Exception(
+                f"[Semantic] Missing type in 'var' declaration for '{var_name}'. "
+                f"Use: var {var_name} <type> [= expr]"
+            )
+
+        if has_init:
             expr_val = self.children[1].evaluate(st)
-            if var_type is None: var_type = expr_val.type
-            elif var_type != expr_val.type:
-                raise Exception(f"[Semantic] Cannot use value of type '{expr_val.type}' to initialize variable '{var_name}' of type '{var_type}'.")
+            if var_type != expr_val.type:
+                raise Exception(
+                    f"[Semantic] Cannot use value of type '{expr_val.type}' to initialize "
+                    f"variable '{var_name}' of type '{var_type}'."
+                )
             st.create_variable(var_name, var_type)
             st.set(var_name, expr_val)
         else:
-            # [Semantic] A sintaxe 'var x' foi aceita, mas semanticamente é ambígua.
-            if var_type is None:
-                raise Exception(f"[Semantic] Cannot declare variable '{var_name}' without a type or an initial value.")
+            # Declaração sem inicialização: cria variável do tipo informado,
+            # permanece sem valor (erro só se usada antes de inicializar).
             st.create_variable(var_name, var_type)
+
 
 class Assignment(Node):
     def __init__(self, children): super().__init__('=', children)
@@ -349,22 +363,28 @@ class Parser:
         node = None
         if lex.next.kind == "VAR":
             lex.select_next()
-            if lex.next.kind != "IDEN": raise Exception("[Parser] Expected identifier after 'var'")
-            iden = Identifier(lex.next.kind, lex.select_next())
-            
-            # CORREÇÃO: A regra é estrita. O tipo é obrigatório.
-            if lex.next.kind != "TYPE":
-                raise Exception("[Parser] Expected type (int, string, bool) after identifier")
-            
-            var_type = lex.next.value; lex.select_next()
+            if lex.next.kind != "IDEN":
+                raise Exception("[Parser] Expected identifier after 'var'")
+            iden = Identifier(lex.next.value)
+            lex.select_next()
+
+            # TYPE agora é opcional no parser
+            var_type = None
+            if lex.next.kind == "TYPE":
+                var_type = lex.next.value
+                lex.select_next()
+
             children = [iden]
-            
+
             if lex.next.kind == "ASSIGN":
                 lex.select_next()
-                if lex.next.kind in ("END", "EOF"): raise Exception("[Parser] Expected expression after '=' in declaration")
-                expr = Parser.parseBoolExpression(lex); children.append(expr)
-            
+                if lex.next.kind in ("END", "EOF"):
+                    raise Exception("[Parser] Expected expression after '=' in declaration")
+                expr = Parser.parseBoolExpression(lex)
+                children.append(expr)
+
             node = VarDec(var_type, children)
+
 
         elif lex.next.kind == "IF":
             lex.select_next(); cond = Parser.parseBoolExpression(lex)
