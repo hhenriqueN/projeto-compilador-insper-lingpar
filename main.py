@@ -178,16 +178,33 @@ class Identifier(Node):
     def evaluate(self, st: SymbolTable): return st.get(self.value)
 
 class VarDec(Node):
-    def __init__(self, value, children): super().__init__(value, children)
+    def __init__(self, value, children):
+        super().__init__(value, children)
     def evaluate(self, st: SymbolTable):
         var_name = self.children[0].value
-        var_type = self.value
-        st.create_variable(var_name, var_type)
+        var_type = self.value # Pode ser None
+
+        # Caso 1: A declaração tem um valor inicial (ex: var x = 4 ou var x int = 4)
         if len(self.children) > 1:
             expr_val = self.children[1].evaluate(st)
-            if var_type != expr_val.type:
+            
+            # Se o tipo não foi dado, inferimos a partir da expressão
+            if var_type is None:
+                var_type = expr_val.type
+            # Se o tipo foi dado, verificamos se é compatível
+            elif var_type != expr_val.type:
                 raise Exception(f"[Semantic] Cannot use value of type '{expr_val.type}' to initialize variable '{var_name}' of type '{var_type}'.")
+            
+            st.create_variable(var_name, var_type)
             st.set(var_name, expr_val)
+        
+        # Caso 2: A declaração não tem valor inicial (ex: var x int)
+        else:
+            # ESTE É O NOVO ERRO SEMÂNTICO!
+            if var_type is None:
+                raise Exception(f"[Semantic] Cannot declare variable '{var_name}' without a type or an initial value.")
+            
+            st.create_variable(var_name, var_type)
 
 class Assignment(Node):
     def __init__(self, children): super().__init__('=', children)
@@ -340,13 +357,27 @@ class Parser:
             lex.select_next()
             if lex.next.kind != "IDEN": raise Exception("[Parser] Expected identifier after 'var'")
             iden = Identifier(lex.next.value); lex.select_next()
-            if lex.next.kind != "TYPE": raise Exception("[Parser] Expected type (int, string, bool) after identifier")
-            var_type = lex.next.value; lex.select_next()
+            
+            var_type = None
             children = [iden]
-            if lex.next.kind == "ASSIGN":
+
+            # CASO 1: Tem um tipo explícito
+            if lex.next.kind == "TYPE":
+                var_type = lex.next.value
+                lex.select_next()
+                if lex.next.kind == "ASSIGN":
+                    lex.select_next()
+                    if lex.next.kind in ("END", "EOF"): raise Exception("[Parser] Expected expression after '=' in declaration")
+                    expr = Parser.parseBoolExpression(lex); children.append(expr)
+            # CASO 2: Não tem tipo, mas tem atribuição (para inferência)
+            elif lex.next.kind == "ASSIGN":
                 lex.select_next()
                 if lex.next.kind in ("END", "EOF"): raise Exception("[Parser] Expected expression after '=' in declaration")
                 expr = Parser.parseBoolExpression(lex); children.append(expr)
+            # CASO INVÁLIDO: Nem tipo, nem atribuição
+            else:
+                raise Exception("[Parser] Invalid variable declaration; expected type or assignment after identifier")
+
             node = VarDec(var_type, children)
         elif lex.next.kind == "IF":
             lex.select_next(); cond = Parser.parseBoolExpression(lex)
