@@ -2,11 +2,9 @@ import sys
 import re
 from abc import ABC, abstractmethod
 
-# Mantido o PrePro original, que é mais robusto
 class PrePro:
     @staticmethod
     def filter(code: str) -> str:
-        # Verifica o uso incorreto de // como operador antes de remover comentários
         if re.search(r'([0-9A-Za-z\)])//([0-9A-Za-z\(])', code):
             raise Exception("Uso inválido de '//' como operador. Use '/' para divisão.")
         return re.sub(r'//.*', '', code)
@@ -17,7 +15,6 @@ class Token:
         self.value = value
 
 class Lexer:
-    # Adicionadas novas palavras reservadas e tipos
     RESERVED = {
         "Println": "PRINT",
         "if": "IF",
@@ -121,13 +118,11 @@ class Lexer:
         
         raise Exception(f"Caractere inválido: {ch}")
 
-# A classe Variable agora armazena valor e tipo
 class Variable:
     def __init__(self, value, type: str):
         self.value = value
         self.type = type
 
-# SymbolTable foi atualizada para análise semântica
 class SymbolTable:
     def __init__(self):
         self._table = {}
@@ -160,7 +155,6 @@ class Node(ABC):
     def evaluate(self, st: SymbolTable):
         pass
 
-# Nós de valores agora retornam um objeto Variable
 class IntVal(Node):
     def __init__(self, value):
         super().__init__(value, [])
@@ -179,10 +173,10 @@ class BoolVal(Node):
     def evaluate(self, st: SymbolTable):
         return Variable(self.value, "bool")
 
-# Operadores agora fazem verificação de tipo
 class BinOp(Node):
     def __init__(self, value, children):
         super().__init__(value, children)
+    
     def evaluate(self, st: SymbolTable):
         left = self.children[0].evaluate(st)
         right = self.children[1].evaluate(st)
@@ -190,10 +184,19 @@ class BinOp(Node):
         op = self.value
 
         if op == '+':
+            def _coerce_to_string(var: Variable) -> str:
+                if var.type == "string":
+                    return var.value
+                if var.type == "bool":
+                    return str(var.value).lower()
+                return str(var.value)
+
             if left.type == "int" and right.type == "int":
                 return Variable(left.value + right.value, "int")
+            
             if left.type == "string" or right.type == "string":
-                return Variable(str(left.value) + str(right.value), "string")
+                return Variable(_coerce_to_string(left) + _coerce_to_string(right), "string")
+            
             raise Exception("[Semântico] Operação '+' inválida para os tipos")
 
         if op in ('-', '*', '/'):
@@ -245,7 +248,6 @@ class Identifier(Node):
     def evaluate(self, st: SymbolTable):
         return st.get(self.value)
 
-# Novo nó para declaração de variáveis
 class VarDec(Node):
     def __init__(self, value, children):
         super().__init__(value, children) # value é o tipo (string)
@@ -381,6 +383,8 @@ class Parser:
         while lex.next.kind in ("PLUS", "MINUS"):
             op = lex.next.value
             lex.select_next()
+            if lex.next.kind == "EOF" or lex.next.kind == "END":
+                raise Exception(f"[Parser] Expressão incompleta após o operador '{op}'")
             right = Parser.parseTerm(lex)
             node = BinOp(op, [node, right])
         return node
@@ -391,6 +395,8 @@ class Parser:
         while lex.next.kind in ("MULT", "DIV"):
             op = lex.next.value
             lex.select_next()
+            if lex.next.kind == "EOF" or lex.next.kind == "END":
+                raise Exception(f"[Parser] Expressão incompleta após o operador '{op}'")
             right = Parser.parseFactor(lex)
             node = BinOp(op, [node, right])
         return node
