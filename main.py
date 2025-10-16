@@ -438,6 +438,10 @@ class Parser:
         if lex.next.kind == "IDEN":
             node = Identifier(lex.next.value); lex.select_next(); return node
         
+        if lex.next.kind in ("MULT", "DIV"):
+            op_val = lex.next.value
+            raise Exception(f"[Parser] Expressão não pode começar com o operador binário '{op_val}'")
+        
         raise Exception(f"Fator inválido. Token inesperado: {lex.next.kind}")
 
     @staticmethod
