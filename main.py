@@ -78,29 +78,92 @@ class Lexer:
         # [Lexer] Erro de caractere inválido que não pertence a nenhum token.
         raise Exception(f"[Lexer] Invalid character: {ch}")
 
+class Code:
+
+    instructions = []
+
+    @staticmethod
+    def append(code: str):
+
+        if code is None:
+            return
+
+        Code.instructions.append(code)
+
+    @staticmethod
+    def header():
+        return (
+            "section .data\n"
+            "  format_out: db \"%d\", 10, 0 ; format do printf\n"
+            "  format_in: db \"%d\", 0 ; format do scanf\n"
+            "  scan_int: dd 0; 32-bits integer\n\n"
+            "section .text\n\n"
+            "  extern printf ; usar _printf para Windows\n"
+            "  extern scanf ; usar _scanf para Windows\n"
+            "  ; extern _ExitProcess@4 ; usar para Windows\n"
+            "  global _start ; início do programa\n\n"
+            "_start:\n"
+            "  push ebp ; guarda o EBP\n"
+            "  mov ebp, esp ; zera a pilha\n\n"
+            "  ; aqui começa o codigo gerado:\n\n"
+        )
+    
+    @staticmethod
+    def footer():
+        return(
+            "\n  ; aqui termina o código gerado\n\n"
+            "  mov esp, ebp ; reestabelece a pilha\n"
+            "  pop ebp\n\n"
+            "  ; chamada da interrupcao de saida (Linux)\n"
+            "  mov eax, 1   \n"
+            "  xor ebx, ebx \n"
+            "  int 0x80     \n"
+            "  ; Para Windows:\n"
+            "  ; push dword 0        \n"
+            "  ; call _ExitProcess@4\n"
+        )
+    
+    @staticmethod
+    def dump(filename: str):
+
+        body = "\n".join(Code.instructions)
+        content = Code.header() + body + Code.footer
+        with open(filename, "w", encoding="utf-8") as f:
+            f.write(content + "\n")
+
+    
+
 class Variable:
-    def __init__(self, value, type: str):
+
+    def __init__(self, value, type: str, shift):
         self.value = value
         self.type = type
+        self.shift = shift
 
 class SymbolTable:
     # A SymbolTable é o coração da análise semântica. Todos os erros aqui são [Semantic].
     def __init__(self):
         self._table = {}
+        self._shift = 0
 
-    def create_variable(self, name: str, type: str):
+    def create_variable(self, name: str, type: str, shift):
         if name in self._table:
             raise Exception(f"[Semantic] Variable '{name}' already declared.")
-        self._table[name] = Variable(None, type)
+        
+        self._shift -= 4
 
-    def set(self, name: str, var: Variable):
+        self._table[name] = Variable(None, type, self._shift)
+
+    def set(self, name: str, var: Variable, shift):
         if name not in self._table:
             raise Exception(f"[Semantic] Variable '{name}' not declared.")
         if self._table[name].type != var.type:
             raise Exception(f"[Semantic] Invalid type assignment for '{name}'. Expected '{self._table[name].type}', received '{var.type}'.")
+       
+        var.shift = self._table[name].shift
         self._table[name] = var
 
-    def get(self, name: str) -> Variable:
+    def get(self, name: str, shift) -> Variable:
         if name not in self._table:
             raise Exception(f"[Semantic] Variable '{name}' not defined.")
         var = self._table[name]
@@ -109,11 +172,23 @@ class SymbolTable:
         return var
 
 class Node(ABC):
-    def __init__(self, value, children=None):
+
+    id = 0
+
+    def __init__(self, value, children=None, id=0):
         self.value = value
         self.children = children or []
+        self.my_id = Node.newId()
+
+
     @abstractmethod
     def evaluate(self, st: SymbolTable): pass
+
+    @staticmethod
+    def newId(): 
+
+        Node.id += 1
+        return Node.id
 
 class IntVal(Node):
     def __init__(self, value): super().__init__(value, [])
