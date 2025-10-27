@@ -84,10 +84,8 @@ class Code:
 
     @staticmethod
     def append(code: str):
-
         if code is None:
             return
-
         Code.instructions.append(code)
 
     @staticmethod
@@ -105,7 +103,7 @@ class Code:
             "_start:\n"
             "  push ebp ; guarda o EBP\n"
             "  mov ebp, esp ; zera a pilha\n\n"
-            "  ; aqui começa o codigo gerado:\n\n"
+            "  ; aqui começa o codigo gerado:\n"
         )
     
     @staticmethod
@@ -125,7 +123,6 @@ class Code:
     
     @staticmethod
     def dump(filename: str):
-
         body = "\n".join(Code.instructions)
         content = Code.header() + body + Code.footer
         with open(filename, "w", encoding="utf-8") as f:
@@ -134,8 +131,7 @@ class Code:
     
 
 class Variable:
-
-    def __init__(self, value, type: str, shift):
+    def __init__(self, value, type: str, shift=None):
         self.value = value
         self.type = type
         self.shift = shift
@@ -144,32 +140,41 @@ class SymbolTable:
     # A SymbolTable é o coração da análise semântica. Todos os erros aqui são [Semantic].
     def __init__(self):
         self._table = {}
-        self._shift = 0
+        self._shift = 0 
 
-    def create_variable(self, name: str, type: str, shift):
+    def create_variable(self, name: str, type: str) -> int:
         if name in self._table:
             raise Exception(f"[Semantic] Variable '{name}' already declared.")
         
         self._shift -= 4
-
         self._table[name] = Variable(None, type, self._shift)
+        return self._shift 
 
-    def set(self, name: str, var: Variable, shift):
+    def set(self, name: str, var: Variable):
         if name not in self._table:
             raise Exception(f"[Semantic] Variable '{name}' not declared.")
-        if self._table[name].type != var.type:
-            raise Exception(f"[Semantic] Invalid type assignment for '{name}'. Expected '{self._table[name].type}', received '{var.type}'.")
+        
+        stored_var = self._table[name]
+        if stored_var.type != var.type:
+            raise Exception(f"[Semantic] Invalid type assignment for '{name}'. Expected '{stored_var.type}', received '{var.type}'.")
        
-        var.shift = self._table[name].shift
-        self._table[name] = var
+        stored_var.value = var.value
 
-    def get(self, name: str, shift) -> Variable:
+    def get(self, name: str) -> Variable:
         if name not in self._table:
             raise Exception(f"[Semantic] Variable '{name}' not defined.")
         var = self._table[name]
+        
         if var.value is None:
             raise Exception(f"[Semantic] Variable '{name}' used before initialization.")
         return var
+
+    def get_shift(self, name: str) -> int:
+        if name not in self._table:
+            raise Exception(f"[Semantic] Variable '{name}' not declared.")
+        if self._table[name].shift is None:
+             raise Exception(f"[Semantic] Internal Compiler Error: No shift assigned for '{name}'.")
+        return self._table[name].shift
 
 class Node(ABC):
 
@@ -184,23 +189,35 @@ class Node(ABC):
     @abstractmethod
     def evaluate(self, st: SymbolTable): pass
 
+    @abstractmethod
+    def generate(self, st: SymbolTable): pass
+
+
     @staticmethod
     def newId(): 
-
         Node.id += 1
         return Node.id
 
 class IntVal(Node):
     def __init__(self, value): super().__init__(value, [])
     def evaluate(self, st: SymbolTable): return Variable(self.value, "int")
+    
+    def generate(self, st: SymbolTable):
+        Code.append(f"  mov eax, {self.value}")
 
 class StringVal(Node):
     def __init__(self, value): super().__init__(value, [])
     def evaluate(self, st: SymbolTable): return Variable(self.value, "string")
 
+    def generate(self, st: SymbolTable):
+        Code.append(f"  ; StringVal '{self.value}' not implemented")
+
 class BoolVal(Node):
     def __init__(self, value): super().__init__(value, [])
     def evaluate(self, st: SymbolTable): return Variable(self.value, "bool")
+
+    def generate(self, st: SymbolTable):
+        Code.append(f"  mov eax, {1 if self.value else 0}")
 
 class BinOp(Node):
     # Erros em BinOp são semânticos, pois a sintaxe está correta, mas a lógica (tipos) não.
@@ -234,6 +251,32 @@ class BinOp(Node):
             if op == '||': return Variable(left.value or right.value, "bool")
         raise Exception(f"[Semantic] Unknown binary operator: {op}")
 
+    def generate(self, st: SymbolTable):
+        self.children[1].generate(st)
+        Code.append("  push eax")
+        self.children[0].generate(st)
+        Code.append("  pop ecx")
+        
+        op = self.value
+        
+        if op == '+': Code.append("  add eax, ecx")
+        elif op == '-': Code.append("  sub eax, ecx")
+        elif op == '*': Code.append("  imul eax, ecx")
+        elif op == '/':
+            Code.append("  cdq")
+            Code.append("  idiv ecx")
+        
+        elif op in ('==', '>', '<'):
+            Code.append("  cmp eax, ecx")
+            Code.append("  mov eax, 0")
+            Code.append("  mov ecx, 1")
+            if op == '==': Code.append("  cmove eax, ecx")
+            if op == '>': Code.append("  cmovg eax, ecx")
+            if op == '<': Code.append("  cmovl eax, ecx")
+        
+        elif op == '&&': Code.append("  and eax, ecx")
+        elif op == '||': Code.append("  or eax, ecx")
+
 class UnOp(Node):
     # Erros em UnOp são semânticos.
     def __init__(self, value, children): super().__init__(value, children)
@@ -248,9 +291,25 @@ class UnOp(Node):
             return Variable(not child.value, "bool")
         raise Exception(f"[Semantic] Unknown unary operator: {op}")
 
+    def generate(self, st: SymbolTable):
+        self.children[0].generate(st)
+        op = self.value
+        
+        if op == '-': Code.append("  neg eax")
+        if op == '+': pass
+        if op == '!':
+            Code.append("  cmp eax, 0")
+            Code.append("  mov eax, 0")
+            Code.append("  mov ecx, 1")
+            Code.append("  cmove eax, ecx")
+
 class Identifier(Node):
     def __init__(self, value): super().__init__(value, [])
     def evaluate(self, st: SymbolTable): return st.get(self.value)
+
+    def generate(self, st: SymbolTable):
+        shift = st.get_shift(self.value)
+        Code.append(f"  mov eax, [ebp{shift}] ; recupera {self.value}")
 
 class VarDec(Node):
     # Neste modelo, a ausência de TYPE é um erro SEMÂNTICO,
@@ -260,16 +319,17 @@ class VarDec(Node):
 
     def evaluate(self, st: SymbolTable):
         var_name = self.children[0].value
-        var_type = self.value  # Pode ser None se o parser não viu TYPE
+        var_type = self.value
         has_init = len(self.children) > 1
 
-        # Regra exigida pelos testes: TYPE é obrigatório na declaração com 'var'
         if var_type is None:
             raise Exception(
                 f"[Semantic] Missing type in 'var' declaration for '{var_name}'. "
                 f"Use: var {var_name} <type> [= expr]"
             )
 
+        st.create_variable(var_name, var_type)
+        
         if has_init:
             expr_val = self.children[1].evaluate(st)
             if var_type != expr_val.type:
@@ -277,12 +337,20 @@ class VarDec(Node):
                     f"[Semantic] Cannot use value of type '{expr_val.type}' to initialize "
                     f"variable '{var_name}' of type '{var_type}'."
                 )
-            st.create_variable(var_name, var_type)
             st.set(var_name, expr_val)
-        else:
-            # Declaração sem inicialização: cria variável do tipo informado,
-            # permanece sem valor (erro só se usada antes de inicializar).
-            st.create_variable(var_name, var_type)
+
+    def generate(self, st: SymbolTable):
+        var_name = self.children[0].value
+        var_type = self.value
+        has_init = len(self.children) > 1
+
+        shift = st.create_variable(var_name, var_type)
+        
+        Code.append(f"  sub esp, 4 ; var {var_name} {var_type} [EBP{shift}]")
+        
+        if has_init:
+            self.children[1].generate(st)
+            Code.append(f"  mov [ebp{shift}], eax")
 
 
 class Assignment(Node):
@@ -292,6 +360,14 @@ class Assignment(Node):
         val = self.children[1].evaluate(st)
         st.set(name, val)
 
+    def generate(self, st: SymbolTable):
+        name = self.children[0].value
+        shift = st.get_shift(name)
+        
+        self.children[1].generate(st)
+        
+        Code.append(f"  mov [ebp{shift}], eax ; {name} = EAX")
+
 class Print(Node):
     def __init__(self, children): super().__init__('print', children)
     def evaluate(self, st: SymbolTable):
@@ -299,14 +375,29 @@ class Print(Node):
         if val.type == "bool": print(str(val.value).lower())
         else: print(val.value)
 
+    def generate(self, st: SymbolTable):
+        self.children[0].generate(st)
+        
+        Code.append("  push eax")
+        Code.append("  push format_out")
+        Code.append("  call printf")
+        Code.append("  add esp, 8 ; limpa argumentos da pilha")
+
 class Block(Node):
     def __init__(self, children): super().__init__('block', children)
     def evaluate(self, st: SymbolTable):
         for child in self.children: child.evaluate(st)
 
+    def generate(self, st: SymbolTable):
+        for child in self.children:
+            child.generate(st)
+
 class NoOp(Node):
     def __init__(self): super().__init__('noop', [])
     def evaluate(self, st: SymbolTable): return None
+
+    def generate(self, st: SymbolTable):
+        pass
 
 class Read(Node):
     def __init__(self): super().__init__('read', [])
@@ -314,6 +405,14 @@ class Read(Node):
         try: return Variable(int(input().strip()), "int")
         # [Semantic] Erro de tipo em tempo de execução.
         except (ValueError, TypeError): raise Exception("[Semantic] Scanln input must be an integer.")
+
+    def generate(self, st: SymbolTable):
+        Code.append("  push scan_int ; endereço de memória de suporte")
+        Code.append("  push format_in ; formato de entrada (int)")
+        Code.append("  call scanf")
+        Code.append("  add esp, 8 ; Remove os argumentos da pilha")
+        Code.append("  mov eax, dword [scan_int]")
+
 
 class If(Node):
     def __init__(self, children): super().__init__('if', children)
@@ -324,6 +423,31 @@ class If(Node):
         if cond.value: self.children[1].evaluate(st)
         elif len(self.children) == 3: self.children[2].evaluate(st)
 
+    def generate(self, st: SymbolTable):
+        has_else = len(self.children) == 3
+        
+        label_else = f"L_else_{self.my_id}"
+        label_endif = f"L_endif_{self.my_id}"
+
+        self.children[0].generate(st)
+        
+        Code.append("  cmp eax, 0")
+        
+        if has_else:
+            Code.append(f"  je {label_else}")
+        else:
+            Code.append(f"  je {label_endif}")
+            
+        self.children[1].generate(st)
+        
+        if has_else:
+            Code.append(f"  jmp {label_endif}")
+            Code.append(f"{label_else}:")
+            self.children[2].generate(st)
+            
+        Code.append(f"{label_endif}:")
+
+
 class While(Node):
     def __init__(self, children): super().__init__('while', children)
     def evaluate(self, st: SymbolTable):
@@ -333,6 +457,25 @@ class While(Node):
             if cond.type != "bool": raise Exception("[Semantic] 'while' condition must be a boolean.")
             if not cond.value: break
             self.children[1].evaluate(st)
+
+    def generate(self, st: SymbolTable):
+        label_loop = f"L_loop_{self.my_id}"
+        label_exit = f"L_exit_{self.my_id}"
+
+        Code.append(f"{label_loop}:")
+        
+        self.children[0].generate(st)
+        
+        Code.append("  cmp eax, 0")
+        
+        Code.append(f"  je {label_exit}")
+        
+        self.children[1].generate(st)
+        
+        Code.append(f"  jmp {label_loop}")
+        
+        Code.append(f"{label_exit}:")
+
 
 class Parser:
     # O Parser verifica a gramática. Todos os erros aqui são [Parser].
@@ -516,12 +659,25 @@ class Parser:
 def main():
     if len(sys.argv) < 2:
         print("Usage: python3 main.py <file.go>", file=sys.stderr); sys.exit(1)
+    
     filename = sys.argv[1]
+    
+    if filename.endswith(".go"):
+        output_filename = filename[:-3] + ".asm"
+    else:
+        output_filename = filename + ".asm"
+
     try:
         with open(filename, "r", encoding='utf-8') as f: code = f.read()
+        
         ast = Parser.run(code)
         st = SymbolTable()
-        ast.evaluate(st)
+        
+        ast.generate(st)
+        
+        Code.dump(output_filename)
+        print(f"Assembly code successfully generated: {output_filename}")
+        
     except FileNotFoundError:
         print(f"Error: File '{filename}' not found.", file=sys.stderr); sys.exit(1)
     except Exception as e:
