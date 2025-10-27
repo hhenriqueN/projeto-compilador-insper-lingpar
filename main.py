@@ -124,7 +124,7 @@ class Code:
     @staticmethod
     def dump(filename: str):
         body = "\n".join(Code.instructions)
-        content = Code.header() + body + Code.footer
+        content = Code.header() + body + Code.footer()
         with open(filename, "w", encoding="utf-8") as f:
             f.write(content + "\n")
 
