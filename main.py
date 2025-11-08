@@ -19,6 +19,7 @@ class Lexer:
     RESERVED = {
         "Println": "PRINT", "if": "IF", "for": "WHILE", "else": "ELSE",
         "Scanln": "READ", "var": "VAR", "int": "TYPE", "string": "TYPE", "bool": "TYPE",
+        "func": "FUNC", "return": "RETURN"
     }
 
     def __init__(self, source: str):
@@ -31,7 +32,8 @@ class Lexer:
         return '\0'
 
     def select_next(self):
-        while self.position < len(self.source) and self.source[self.position] in (" ", "\t", "\r"): self.position += 1
+        while self.position < len(self.source) and self.source[self.position] in (" ", "\t", "\r"):
+            self.position += 1
         if self.position >= len(self.source): self.next = Token('EOF', ''); return
         ch = self.source[self.position]
         if ch == '\n': self.position += 1; self.next = Token('END', '\n'); return
@@ -50,6 +52,8 @@ class Lexer:
         if ch == '-': self.position += 1; self.next = Token('MINUS', '-'); return
         if ch == '*': self.position += 1; self.next = Token('MULT', '*'); return
         if ch == '/': self.position += 1; self.next = Token('DIV', '/'); return
+        if ch == ',':
+            self.position += 1; self.next = Token('COMMA', ','); return
         if ch == '=':
             self.position += 1
             if self._peek() == '=': self.position += 1; self.next = Token('EQ', '==')
@@ -128,53 +132,68 @@ class Code:
         with open(filename, "w", encoding="utf-8") as f:
             f.write(content + "\n")
 
-    
-
 class Variable:
-    def __init__(self, value, type: str, shift=None):
+    def __init__(self, value, type: str, shift=None, func: bool=False):
         self.value = value
         self.type = type
         self.shift = shift
+        self.func = func
 
 class SymbolTable:
     # A SymbolTable é o coração da análise semântica. Todos os erros aqui são [Semantic].
-    def __init__(self):
+    def __init__(self, parent=None):
         self._table = {}
         self._shift = 0 
+        self.parent = parent
 
     def create_variable(self, name: str, type: str) -> int:
         if name in self._table:
             raise Exception(f"[Semantic] Variable '{name}' already declared.")
         
         self._shift -= 4
-        self._table[name] = Variable(None, type, self._shift)
+        self._table[name] = Variable(None, type, self._shift, func=False)
         return self._shift 
 
+    def create_function(self, name: str, func_node, return_type: str):
+        if name in self._table:
+            raise Exception(f"[Semantic] Variable '{name}' already declared.")
+        # function stored as Variable with func=True, shift None
+        self._table[name] = Variable(func_node, return_type, None, func=True)
+
     def set(self, name: str, var: Variable):
-        if name not in self._table:
-            raise Exception(f"[Semantic] Variable '{name}' not declared.")
-        
-        stored_var = self._table[name]
-        if stored_var.type != var.type:
-            raise Exception(f"[Semantic] Invalid type assignment for '{name}'. Expected '{stored_var.type}', received '{var.type}'.")
-       
-        stored_var.value = var.value
+        # recursive setter: looks up the chain to find declared variable
+        if name in self._table:
+            stored_var = self._table[name]
+            if stored_var.func:
+                raise Exception(f"[Semantic] '{name}' is a function and cannot be assigned.")
+            if stored_var.type != var.type:
+                raise Exception(f"[Semantic] Invalid type assignment for '{name}'. Expected '{stored_var.type}', received '{var.type}'.")
+            stored_var.value = var.value
+            return
+        if self.parent:
+            self.parent.set(name, var)
+            return
+        raise Exception(f"[Semantic] Variable '{name}' not declared.")
 
     def get(self, name: str) -> Variable:
-        if name not in self._table:
-            raise Exception(f"[Semantic] Variable '{name}' not defined.")
-        var = self._table[name]
-        
-        if var.value is None:
-            raise Exception(f"[Semantic] Variable '{name}' used before initialization.")
-        return var
+        if name in self._table:
+            var = self._table[name]
+            # for non-function variables, ensure initialized before use
+            if not var.func and var.value is None:
+                raise Exception(f"[Semantic] Variable '{name}' used before initialization.")
+            return var
+        if self.parent:
+            return self.parent.get(name)
+        raise Exception(f"[Semantic] Variable '{name}' not defined.")
 
     def get_shift(self, name: str) -> int:
-        if name not in self._table:
-            raise Exception(f"[Semantic] Variable '{name}' not declared.")
-        if self._table[name].shift is None:
-             raise Exception(f"[Semantic] Internal Compiler Error: No shift assigned for '{name}'.")
-        return self._table[name].shift
+        if name in self._table:
+            if self._table[name].shift is None:
+                raise Exception(f"[Semantic] Internal Compiler Error: No shift assigned for '{name}'.")
+            return self._table[name].shift
+        if self.parent:
+            return self.parent.get_shift(name)
+        raise Exception(f"[Semantic] Variable '{name}' not declared.")
 
 class Node(ABC):
 
@@ -386,7 +405,18 @@ class Print(Node):
 class Block(Node):
     def __init__(self, children): super().__init__('block', children)
     def evaluate(self, st: SymbolTable):
-        for child in self.children: child.evaluate(st)
+        for child in self.children:
+            if isinstance(child, Block):
+                child_st = SymbolTable(parent=st)
+                ret = child.evaluate(child_st)
+                if isinstance(ret, Variable):
+                    # propagate return upwards
+                    return ret
+            else:
+                res = child.evaluate(st)
+                if isinstance(res, Variable):
+                    return res
+        return None
 
     def generate(self, st: SymbolTable):
         for child in self.children:
@@ -420,8 +450,12 @@ class If(Node):
         cond = self.children[0].evaluate(st)
         # [Semantic] A sintaxe 'if (1+1)' é válida, mas o significado é incorreto.
         if cond.type != "bool": raise Exception("[Semantic] 'if' condition must be a boolean.")
-        if cond.value: self.children[1].evaluate(st)
-        elif len(self.children) == 3: self.children[2].evaluate(st)
+        if cond.value:
+            ret = self.children[1].evaluate(st)
+            if isinstance(ret, Variable): return ret
+        elif len(self.children) == 3:
+            ret = self.children[2].evaluate(st)
+            if isinstance(ret, Variable): return ret
 
     def generate(self, st: SymbolTable):
         has_else = len(self.children) == 3
@@ -456,7 +490,8 @@ class While(Node):
             # [Semantic] A sintaxe 'while (variavel_int)' é válida, mas o significado é incorreto.
             if cond.type != "bool": raise Exception("[Semantic] 'while' condition must be a boolean.")
             if not cond.value: break
-            self.children[1].evaluate(st)
+            ret = self.children[1].evaluate(st)
+            if isinstance(ret, Variable): return ret
 
     def generate(self, st: SymbolTable):
         label_loop = f"L_loop_{self.my_id}"
@@ -477,14 +512,90 @@ class While(Node):
         Code.append(f"{label_exit}:")
 
 
+
+class FuncDec(Node):
+
+    def __init__(self, value, children):
+        super().__init__(value, children)
+
+    def evaluate(self, st: SymbolTable):
+        name = self.children[0].value
+        st.create_function(name, self, self.value)
+
+    def generate(self, st: SymbolTable):
+        Code.append(f"  ; func {self.children[0].value} (...)  ; codegen not implemented")
+
+class FuncCall(Node):
+   
+    def __init__(self, value, children):
+        super().__init__(value, children)
+
+    def evaluate(self, st: SymbolTable):
+        # lookup function
+        func_var = None
+        try:
+            func_var = st.get(self.value)
+        except Exception as e:
+            raise Exception("[Semantic] Function not declared or invalid call.")
+        if not func_var.func:
+            raise Exception("[Semantic] Call to non-function.")
+        func_node: FuncDec = func_var.value
+        declared_params = func_node.children[1:-1]  # first is identifier, last is block
+        if len(self.children) != len(declared_params):
+            raise Exception("[Semantic] Incorrect number of arguments in function call.")
+        call_st = SymbolTable(parent=st)
+        # declare params in call table and assign evaluated args
+        for idx, p in enumerate(declared_params):
+            # p is VarDec(type, [Identifier])
+            ident = p.children[0].value
+            ptype = p.value
+            call_st.create_variable(ident, ptype)
+            arg_val = self.children[idx].evaluate(st)
+            if arg_val.type != ptype:
+                raise Exception(f"[Semantic] Argument type mismatch in call to '{self.value}' for parameter '{ident}'.")
+            call_st.set(ident, arg_val)
+        body = func_node.children[-1]
+        ret = body.evaluate(call_st)
+        if func_node.value is None:
+            # void function: must not return value
+            if isinstance(ret, Variable):
+                raise Exception("[Semantic] Void function returned a value.")
+            return None
+        else:
+            # typed function must return Variable of that type
+            if isinstance(ret, Variable):
+                if ret.type != func_node.value:
+                    raise Exception(f"[Semantic] Function '{self.value}' returned wrong type. Expected '{func_node.value}', got '{ret.type}'.")
+                return ret
+            raise Exception(f"[Semantic] Function '{self.value}' missing return (expected '{func_node.value}').")
+
+    def generate(self, st: SymbolTable):
+        Code.append(f"  ; call {self.value} - codegen not implemented")
+
+class Return(Node):
+    def __init__(self, children):
+        super().__init__('return', children)
+
+    def evaluate(self, st: SymbolTable):
+        val = self.children[0].evaluate(st)
+        return val
+
+
 class Parser:
-    # O Parser verifica a gramática. Todos os erros aqui são [Parser].
     @staticmethod
     def parseProgram(lex: Lexer):
         children = []
         while lex.next.kind != "EOF":
+            if lex.next.kind == "END":
+                lex.select_next()
+                continue
+            if lex.next.kind == "FUNC":
+                func = Parser.parse_func_declaration(lex)
+                children.append(func)
+                continue
             stmt = Parser.parseStatement(lex)
             children.append(stmt)
+        children.append(FuncCall("main", []))
         return Block(children)
 
     @staticmethod
@@ -569,7 +680,22 @@ class Parser:
             lex.select_next()
             if lex.next.kind != "CLOSE_PAR": raise Exception("[Parser] Expected ')' after Scanln")
             lex.select_next(); return Read()
-        if lex.next.kind == "IDEN": node = Identifier(lex.next.value); lex.select_next(); return node
+        if lex.next.kind == "IDEN":
+            name = lex.next.value
+            lex.select_next()
+            if lex.next.kind == "OPEN_PAR":
+                lex.select_next()
+                args = []
+                if lex.next.kind != "CLOSE_PAR":
+                    args.append(Parser.parseBoolExpression(lex))
+                    while lex.next.kind == "COMMA":
+                        lex.select_next()
+                        args.append(Parser.parseBoolExpression(lex))
+                if lex.next.kind != "CLOSE_PAR": raise Exception("[Parser] Missing closing parenthesis in function call")
+                lex.select_next()
+                return FuncCall(name, args)
+            else:
+                return Identifier(name)
         if lex.next.kind in ("MULT", "DIV"):
             op_val = lex.next.value; raise Exception(f"[Parser] Expression cannot start with binary operator '{op_val}'")
         raise Exception(f"[Parser] Invalid factor or start of expression. Unexpected token: {lex.next.kind}")
@@ -586,7 +712,6 @@ class Parser:
             iden = Identifier(lex.next.value)
             lex.select_next()
 
-            # TYPE agora é opcional no parser
             var_type = None
             if lex.next.kind == "TYPE":
                 var_type = lex.next.value
@@ -621,9 +746,22 @@ class Parser:
 
         elif lex.next.kind == "IDEN":
             iden = Identifier(lex.next.value); lex.select_next()
-            if lex.next.kind != "ASSIGN": raise Exception("[Parser] Expected '=' for assignment")
-            lex.select_next(); expr = Parser.parseBoolExpression(lex)
-            node = Assignment([iden, expr])
+            if lex.next.kind == "ASSIGN":
+                lex.select_next(); expr = Parser.parseBoolExpression(lex)
+                node = Assignment([iden, expr])
+            elif lex.next.kind == "OPEN_PAR":
+                lex.select_next()
+                args = []
+                if lex.next.kind != "CLOSE_PAR":
+                    args.append(Parser.parseBoolExpression(lex))
+                    while lex.next.kind == "COMMA":
+                        lex.select_next()
+                        args.append(Parser.parseBoolExpression(lex))
+                if lex.next.kind != "CLOSE_PAR": raise Exception("[Parser] Missing closing parenthesis in function call")
+                lex.select_next()
+                node = FuncCall(iden.value, args)
+            else:
+                raise Exception("[Parser] Expected '=' for assignment or '(' for function call")
             
         elif lex.next.kind == "PRINT":
             lex.select_next()
@@ -634,6 +772,11 @@ class Parser:
 
         elif lex.next.kind == "END":
             lex.select_next(); return NoOp()
+
+        elif lex.next.kind == "RETURN":
+            lex.select_next()
+            expr = Parser.parseBoolExpression(lex)
+            node = Return([expr])
             
         else:
             raise Exception(f"[Parser] Invalid statement. Token: {lex.next.kind}")
@@ -645,6 +788,40 @@ class Parser:
             return node
         else:
             raise Exception(f"[Parser] Unexpected token '{lex.next.value}' after statement. Expected end of line.")
+
+    @staticmethod
+    def parse_func_declaration(lex: Lexer):
+        lex.select_next()
+        if lex.next.kind != "IDEN": raise Exception("[Parser] Expected function name after 'func'")
+        func_name = lex.next.value
+        ident_node = Identifier(func_name)
+        lex.select_next()
+        if lex.next.kind != "OPEN_PAR": raise Exception("[Parser] Expected '(' after function name")
+        lex.select_next()
+        params = []
+        if lex.next.kind != "CLOSE_PAR":
+            while True:
+                if lex.next.kind != "IDEN": raise Exception("[Parser] Expected parameter name")
+                param_name = lex.next.value
+                param_ident = Identifier(param_name)
+                lex.select_next()
+                if lex.next.kind != "TYPE": raise Exception("[Parser] Expected parameter type after name")
+                param_type = lex.next.value
+                lex.select_next()
+                params.append(VarDec(param_type, [param_ident]))
+                if lex.next.kind == "COMMA":
+                    lex.select_next()
+                    continue
+                break
+        if lex.next.kind != "CLOSE_PAR": raise Exception("[Parser] Missing ')' after function parameters")
+        lex.select_next()
+        ret_type = None
+        if lex.next.kind == "TYPE":
+            ret_type = lex.next.value
+            lex.select_next()
+        body = Parser.parseBlock(lex)
+        children = [ident_node] + params + [body]
+        return FuncDec(ret_type, children)
 
     @staticmethod
     def run(source_code):
@@ -672,6 +849,8 @@ def main():
         
         ast = Parser.run(code)
         st = SymbolTable()
+        
+        ast.evaluate(st)
         
         ast.generate(st)
         
